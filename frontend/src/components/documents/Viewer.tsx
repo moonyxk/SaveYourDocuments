@@ -55,7 +55,7 @@ export default function Viewer({ doc }: { doc: Json }) {
           ) : null}
         </div>
       </div>
-      <div className={`dx-stage ${zoom ? "zoom" : ""}`} tabIndex={0} aria-label="Vorschau des Originals">
+      <div className={`dx-stage ${zoom ? "zoom" : ""}`} aria-label="Vorschau des Originals">
         {kind === "pdf" ? (
           <iframe src={file} title={`PDF: ${part.name}`} />
         ) : asImage ? (

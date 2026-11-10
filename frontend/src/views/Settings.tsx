@@ -42,7 +42,7 @@ export default function Settings() {
     <>
       <PageHead title="Einstellungen" lead="Änderungen werden sofort gespeichert." />
       <div className="st">
-        <nav className="st-nav" aria-label="Bereiche der Einstellungen" ref={nav} onKeyDown={onKey}>
+        <nav className="st-nav" aria-label="Bereiche der Einstellungen" ref={nav}>
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -50,6 +50,7 @@ export default function Settings() {
               data-tour={`settings-${t.id}`}
               aria-current={t.id === tab ? "page" : undefined}
               onClick={() => go("settings", { tab: t.id })}
+              onKeyDown={onKey}
             >
               {t.label}
             </button>

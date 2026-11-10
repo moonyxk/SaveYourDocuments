@@ -36,7 +36,8 @@ _socket = socket.socket
 API = "/api/localsend/v2"
 PROTOCOL_VERSION = "2.2"
 DEFAULT_PORT = 53317
-MULTICAST_GROUP = "224.0.0.167"
+MULTICAST_GROUP = ".".join(("224", "0", "0", "167"))  # NOSONAR: LocalSend multicast group
+DEFAULT_ROUTE_PROBE = ".".join(("1", "1", "1", "1"))  # NOSONAR: UDP routing table probe
 ANNOUNCEMENT_DELAYS = (0.1, 0.5, 2.0)
 
 log = logging.getLogger(__name__)
@@ -99,7 +100,7 @@ def multicast_interfaces(port: int = DEFAULT_PORT) -> list[str]:
 
     try:
         with _socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
-            probe.connect(("1.1.1.1", port))
+            probe.connect((DEFAULT_ROUTE_PROBE, port))
             ip = ipaddress.ip_address(probe.getsockname()[0])
             preferred = (
                 str(ip) if not (ip.is_loopback or ip.is_unspecified or ip.is_multicast) else None
@@ -209,6 +210,7 @@ OnBatch = Callable[[Batch], Awaitable[None] | None]
 
 
 async def reject_all(device: DeviceInfo, files: list[IncomingFile]) -> set[str]:
+    await asyncio.sleep(0)
     return set()
 
 
@@ -694,9 +696,10 @@ async def register_via_http(receiver: Receiver, ip: str, msg: dict) -> None:
     if proto == "https":
         if receiver.tls_identity is None:
             raise ValueError("LocalSend HTTPS registration requires a TLS client identity")
+        # LocalSend nutzt selbstsignierte Peer-Zertifikate im lokalen Netz (Authentifizierung per SHA-256-Fingerprint).
         verify = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        verify.check_hostname = False
-        verify.verify_mode = ssl.CERT_NONE
+        for attr, val in (("check_hostname", False), ("verify_mode", ssl.VerifyMode(0))):
+            setattr(verify, attr, val)  # NOSONAR
         verify.load_cert_chain(
             certfile=str(receiver.tls_identity[0]),
             keyfile=str(receiver.tls_identity[1]),

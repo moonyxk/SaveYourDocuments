@@ -146,6 +146,7 @@ export function Modal({
   wide?: boolean;
   actions?: ReactNode;
 }) {
+  const overlayRef = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
@@ -169,14 +170,20 @@ export function Modal({
         }
       }
     };
+    const overlay = overlayRef.current;
+    const onBackdrop = (e: MouseEvent) => {
+      if (e.target === overlay) onClose?.();
+    };
     document.addEventListener("keydown", key);
+    overlay?.addEventListener("mousedown", onBackdrop);
     return () => {
       document.removeEventListener("keydown", key);
+      overlay?.removeEventListener("mousedown", onBackdrop);
       prev?.focus?.();
     };
   }, [onClose]);
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
+    <div ref={overlayRef} className="overlay">
       <div ref={ref} className={`modal ${wide ? "wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
         <h2>{title}</h2>
         {children}
@@ -194,7 +201,7 @@ type Ui = {
   toast: (text: string, kind?: ToastKind) => void;
   confirm: (o: ConfirmOpts) => Promise<boolean>;
 };
-const UiContext = createContext<Ui>({ toast: () => {}, confirm: async () => false });
+const UiContext = createContext<Ui>({ toast: () => {}, confirm: () => Promise.resolve(false) });
 export const useUi = (): Ui => useContext(UiContext);
 
 export function UiProvider({ children }: { children: ReactNode }) {

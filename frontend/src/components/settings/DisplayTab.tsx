@@ -17,18 +17,39 @@ const SAMPLE: Record<string, string> = {
   name: "Scan_0042",
 };
 
+function collapseMissingPlaceholders(input: string): string {
+  const isSep = (ch: string) => ch === "_" || ch === "-" || ch.trim() === "";
+  let out = "";
+  let i = 0;
+  while (i < input.length) {
+    const nul = input.indexOf("\0", i);
+    if (nul < 0) {
+      out += input.slice(i);
+      break;
+    }
+    let left = nul;
+    while (left > i && isSep(input[left - 1])) left--;
+    out += input.slice(i, left) + "_";
+    i = nul + 1;
+    while (i < input.length && (input[i] === "\0" || isSep(input[i]))) i++;
+  }
+  let start = 0;
+  let end = out.length;
+  while (start < end && isSep(out[start])) start++;
+  while (end > start && isSep(out[end - 1])) end--;
+  return out.slice(start, end);
+}
+
 /** Gleiche Regeln wie im Hintergrunddienst, nur mit festen Beispielwerten. */
 function exampleName(template: string): string {
-  const text = template
+  const joined = template
     .split(/(\{[a-z]+\})/)
     .map((tok) => {
       const m = /^\{([a-z]+)\}$/.exec(tok);
       return m ? (SAMPLE[m[1]] ?? "\0") : tok;
     })
-    .join("")
-    .replace(/(?:[\s_-]*\0)+[\s_-]*/g, "_")
-    .replace(/^[\s_-]+|[\s_-]+$/g, "")
-    .replace(/[\\/:*?"<>|]/g, "-");
+    .join("");
+  const text = collapseMissingPlaceholders(joined).replace(/[\\/:*?"<>|]/g, "-");
   return text.replace(/[\s_\-\0]/g, "") ? `${text}.pdf` : "Scan_0042.pdf";
 }
 

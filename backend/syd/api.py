@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.exceptions import RequestValidationError
@@ -24,6 +24,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import __version__, backups, firewall, logs, stats, updates
 from .extract import ocr, ollama
+from .localsend import sniff_mime
 from .repo import DEADLINE_TYPES, DOC_TYPES, REF_TYPES, ArchiveError, NotFoundError
 from .state import AppState
 
@@ -88,8 +89,10 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         await state.boot_safe()
-        yield
-        await state.shutdown()
+        try:
+            yield
+        finally:
+            await state.shutdown()
 
     app = FastAPI(
         title="Save Your Documents",
@@ -111,7 +114,14 @@ def create_app(
     def origin_ok(origin: str | None, host: str) -> bool:
         if not origin:
             return True
-        return origin in CORS_ORIGINS or origin == f"http://{host}"
+        if origin in CORS_ORIGINS:
+            return True
+        parsed = urlsplit(origin)
+        return (
+            parsed.scheme in ("http", "https")
+            and parsed.netloc == host
+            and not (parsed.path or parsed.query or parsed.fragment)
+        )
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
@@ -691,8 +701,17 @@ def create_app(
 
     @app.get("/api/import/files/{file_id}")
     def import_file(file_id: int):
-        data, mime = state.importer.file_bytes(file_id)
-        return Response(data, media_type=mime)
+        data, _mime = state.importer.file_bytes(file_id)
+        safe_mime = sniff_mime(data[:16]) or "application/octet-stream"
+        return StreamingResponse(
+            iter([data]),
+            media_type=safe_mime,
+            headers={
+                "Content-Length": str(len(data)),
+                "Content-Disposition": "inline",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     @app.post("/api/import/{batch_id}/commit")
     def commit(batch_id: int, body: dict = Body(...)):

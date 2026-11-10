@@ -22,7 +22,7 @@ function Page({ docId, part, zoom }: { docId: number; part: Part; zoom: number }
   }
   const fit = zoom === 1;
   return (
-    <div className={`rv-stage ${fit ? "fit" : ""}`} tabIndex={0} aria-label={`Original, Seite ${part.page}. Mit den Pfeiltasten scrollen.`}>
+    <div className={`rv-stage ${fit ? "fit" : ""}`} aria-label={`Original, Seite ${part.page}.`}>
       <img
         src={canShow && !broken ? file : thumb}
         alt={`Original, Seite ${part.page}`}

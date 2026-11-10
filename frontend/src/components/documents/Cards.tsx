@@ -535,7 +535,7 @@ export function OcrCard({ docId }: { docId: number }) {
           {pages.map((p) => (
             <div key={p.page}>
               {pages.length > 1 ? <div className="label" style={{ marginTop: "0.75rem" }}>Seite {p.page}</div> : null}
-              <pre className="dx-ocr" tabIndex={0}>
+              <pre className="dx-ocr">
                 {p.text}
               </pre>
             </div>

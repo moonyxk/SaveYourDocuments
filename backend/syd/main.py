@@ -24,7 +24,7 @@ if _VERSION_SYNC.is_file() and (_REPO_ROOT / "version.txt").is_file():
 
 from . import logs  # noqa: E402
 from .api import create_app  # noqa: E402
-from .config import Paths  # noqa: E402
+from .config import Paths, resolve_safe_dir  # noqa: E402
 from .state import AppState  # noqa: E402
 
 
@@ -76,7 +76,7 @@ async def watch_parent(pid: int, server: uvicorn.Server) -> None:
 
 
 async def serve(args: argparse.Namespace) -> None:
-    paths = Paths(Path(args.data_dir) if args.data_dir else None)
+    paths = Paths(resolve_safe_dir(args.data_dir) if args.data_dir else None)
     logs.setup(paths.logs)
     state = AppState(paths, localsend_port=args.localsend_port, multicast=not args.no_multicast)
     shell_token = os.environ.get("SYD_TOKEN")
@@ -86,7 +86,7 @@ async def serve(args: argparse.Namespace) -> None:
     app = create_app(
         state,
         token,
-        ui_dir=Path(args.ui_dir) if args.ui_dir else default_ui_dir(),
+        ui_dir=resolve_safe_dir(args.ui_dir) if args.ui_dir else default_ui_dir(),
         request_exit=lambda: setattr(holder["server"], "should_exit", True),
     )
     config = uvicorn.Config(

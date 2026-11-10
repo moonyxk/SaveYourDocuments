@@ -142,7 +142,6 @@ export function Setup({ status }: { status: Status }) {
               autoComplete="off"
               spellCheck={false}
               className={isKey ? "mono" : ""}
-              autoFocus
             />
           </Field>
           {error ? (
@@ -314,7 +313,6 @@ export function Unlock({ status }: { status: Status }) {
             onChange={(e) => setSecret(e.target.value)}
             autoComplete="off"
             spellCheck={false}
-            autoFocus
           />
         </Field>
         {error ? (

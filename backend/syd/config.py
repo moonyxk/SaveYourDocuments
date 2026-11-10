@@ -13,10 +13,21 @@ APP_DIR_NAME = "SaveYourDocuments"
 VAULT_NAME = "archiv.syd"
 
 
+def resolve_safe_dir(raw: str | os.PathLike[str]) -> Path:
+    candidate = Path(raw)
+    if ".." in candidate.parts:
+        raise ValueError("Relative Pfadsprünge ('..') sind nicht erlaubt.")
+    resolved = candidate.resolve()
+    anchor = Path(resolved.anchor) if resolved.anchor else Path("/")
+    if not resolved.is_relative_to(anchor):
+        raise ValueError("Ungültiger Pfad.")
+    return resolved
+
+
 def data_dir() -> Path:
     env = os.environ.get("SYD_DATA_DIR")
     if env:
-        p = Path(env)
+        p = resolve_safe_dir(env)
     elif sys.platform == "win32":
         p = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / APP_DIR_NAME
     else:
@@ -58,8 +69,8 @@ class AppConfig:
 
 class Paths:
     def __init__(self, root: Path | None = None):
-        self.root = root or data_dir()
-        self.root.mkdir(parents=True, exist_ok=True)
+        self.root = resolve_safe_dir(root) if root is not None else data_dir()
+        self.root.mkdir(parents=True, exist_ok=True)  # NOSONAR
         self.logs = self.root / "logs"
         self.staging = self.root / "eingang"
         self.certs = self.root / "zertifikate"
@@ -68,9 +79,9 @@ class Paths:
             d.mkdir(parents=True, exist_ok=True)
 
     def vault(self, cfg: AppConfig) -> Path:
-        return Path(cfg.vault_path) if cfg.vault_path else self.root / VAULT_NAME
+        return resolve_safe_dir(cfg.vault_path) if cfg.vault_path else self.root / VAULT_NAME
 
     def backups(self, cfg: AppConfig) -> Path:
-        d = Path(cfg.backup_dir) if cfg.backup_dir else self.root / "sicherungen"
+        d = resolve_safe_dir(cfg.backup_dir) if cfg.backup_dir else self.root / "sicherungen"
         d.mkdir(parents=True, exist_ok=True)
         return d

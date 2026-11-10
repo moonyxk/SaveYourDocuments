@@ -11,9 +11,9 @@ export function parseEuro(text: string): number | null {
   let t = raw;
   if (raw.includes(",")) {
     if (!/^-?[\d.]+,\d{1,2}$/.test(raw)) return null;
-    t = raw.replace(/\./g, "").replace(",", ".");
+    t = raw.replaceAll(".", "").replace(",", ".");
   } else if (/^-?\d{1,3}(\.\d{3})+$/.test(raw)) {
-    t = raw.replace(/\./g, "");
+    t = raw.replaceAll(".", "");
   }
   if (!/^-?\d+(\.\d{1,2})?$/.test(t)) return null;
   const cents = Math.round(Number(t) * 100);

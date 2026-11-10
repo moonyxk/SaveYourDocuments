@@ -77,7 +77,7 @@ export function parseLeads(text: string): number[] | null {
     .split(/[,;\s]+/)
     .map((s) => s.trim())
     .filter(Boolean);
-  const nums = parts.map((p) => (/^\d{1,3}$/.test(p) ? Number(p) : NaN));
+  const nums = parts.map((p) => (/^\d{1,3}$/.test(p) ? Number(p) : Number.NaN));
   if (nums.some((n) => Number.isNaN(n) || n > 365)) return null;
   return [...new Set(nums)].sort((a, b) => b - a);
 }

@@ -214,13 +214,11 @@ def extract_amount(text: str) -> Candidate | None:
         low = raw.lower()
         amounts = [parse_eur(m.group(1)) for m in _AMOUNT.finditer(raw)]
         amounts = [a for a in amounts if a is not None]
-        strength = 0.0
-        if any(k in low for k in STRONG_AMOUNT):
-            strength = 0.9
-        elif any(k in low for k in MEDIUM_AMOUNT):
-            strength = 0.7
-        excluded = any(k in low for k in EXCLUDE_AMOUNT) and strength < 0.9
-        if strength == 0.7 and "brutto" not in low and excluded:
+        is_strong = any(k in low for k in STRONG_AMOUNT)
+        is_medium = not is_strong and any(k in low for k in MEDIUM_AMOUNT)
+        strength = 0.9 if is_strong else (0.7 if is_medium else 0.0)
+        excluded = any(k in low for k in EXCLUDE_AMOUNT) and not is_strong
+        if is_medium and "brutto" not in low and excluded:
             strength = 0.0
         if not amounts and strength and i + 1 < len(lines):
             nxt = [parse_eur(m.group(1)) for m in _AMOUNT.finditer(lines[i + 1])]
@@ -242,10 +240,15 @@ def extract_amount(text: str) -> Candidate | None:
 
 
 def _clean_company(line: str) -> str:
-    line = re.split(r"\s[·|•\-–]\s(?=.*\d)|\s{2,}", line)[0]
+    line = re.split(r"\s[·|•\-–]\s(?=[^\n]*\d)|\s{2,}", line)[0]
     line = re.sub(r"^(absender|von|firma)\s*[:.]?\s*", "", line, flags=re.IGNORECASE)
-    line = re.sub(r"\s*,?\s*\d{5}\s.*$", "", line)
-    line = re.sub(r"\s*,\s*[A-ZÄÖÜ][\w.\- ]+\s\d+[a-z]?\s*$", "", line)
+    if m := re.search(r"\d{5}\s", line):
+        line = line[: m.start()].rstrip(" ,")
+    line = re.sub(
+        r",\s*[A-ZÄÖÜ][A-Za-zÄÖÜäöüß.\-]+(?:\s+[A-Za-zÄÖÜäöüß.\-]+)*\s+\d+[a-z]?\s*$",
+        "",
+        line,
+    )
     return line.strip(" ,;:-")[:80]
 
 
@@ -414,17 +417,20 @@ def extract_deadlines(text: str, doc_date: date | None, today: date) -> list[dic
         if kind == "months":
             end, end_conf = add_months(start, n), 0.5
     repeat = 0
-    mr = re.search(
-        r"(?:verlängert sich|verlängerung)[^.\n]{0,60}?(?:um|jeweils um)\s*(?:jeweils\s*)?"
-        r"(?:weitere\s*)?(\d{1,2}|ein(?:en)?|zwölf)\s*(monat\w*|jahr\w*)",
-        low,
-    )  # fmt: skip
-    if mr:
-        num = {"ein": "1", "einen": "1", "zwölf": "12"}.get(mr.group(1), mr.group(1))
-        repeat, kind = _duration(num, mr.group(2))
-        repeat = repeat if kind == "months" else 0
-    elif re.search(r"verlängert sich[^.\n]{0,40}(?:jeweils )?um ein weiteres jahr", low):
-        repeat = 12
+    for kw in re.finditer(r"verlängert sich|verlängerung", low):
+        window = low[kw.end() : kw.end() + 80].split(".", 1)[0].split("\n", 1)[0]
+        if mr := re.search(
+            r"\b(?:jeweils\s+)?um\s+(?:jeweils\s+)?(?:weitere\s+)?"
+            r"(\d{1,2}|ein(?:en)?|zwölf)\s+(monat[a-z]*|jahr[a-z]*)",
+            window,
+        ):
+            num = {"ein": "1", "einen": "1", "zwölf": "12"}.get(mr.group(1), mr.group(1))
+            repeat, kind = _duration(num, mr.group(2))
+            repeat = repeat if kind == "months" else 0
+            break
+        if re.search(r"\b(?:jeweils\s+)?um ein weiteres jahr\b", window):
+            repeat = 12
+            break
     if end and _plausible(end, today):
         out.append({"type": "vertragsende", "due_date": end.isoformat(), "confidence": end_conf,
                     "repeat_months": repeat, "note": "Vertragsende laut Dokument"})  # fmt: skip

@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import total_ordering
 
 import httpx
 
@@ -27,6 +28,7 @@ _SEMVER = re.compile(
 )
 
 
+@total_ordering
 @dataclass(frozen=True)
 class SemVer:
     major: int

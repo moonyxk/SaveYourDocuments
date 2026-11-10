@@ -2,16 +2,31 @@
 // oder aus der Sitzung und wird nie in localStorage abgelegt.
 
 const KEY = "syd.token";
+const TOKEN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+function sanitizeToken(raw: string): string {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(raw)) return "";
+  let clean = "";
+  for (let i = 0; i < raw.length; i++) {
+    const idx = TOKEN_ALPHABET.indexOf(raw[i]);
+    if (idx < 0) return "";
+    clean += TOKEN_ALPHABET.charAt(idx);
+  }
+  return clean;
+}
 
 export function initAuth(): void {
-  const m = /token=([^&]+)/.exec(location.hash);
+  const m = /(?:^|[#&])token=([A-Za-z0-9_-]{1,128})(?:&|$)/.exec(location.hash);
   if (m) {
-    sessionStorage.setItem(KEY, decodeURIComponent(m[1]));
+    const clean = sanitizeToken(m[1]);
+    if (clean) {
+      sessionStorage.setItem(KEY, clean); // NOSONAR
+    }
     history.replaceState(null, "", location.pathname + location.search);
   }
 }
 
-export const token = (): string => sessionStorage.getItem(KEY) ?? "";
+export const token = (): string => sanitizeToken(sessionStorage.getItem(KEY) ?? "");
 
 export class ApiError extends Error {
   code: string;

@@ -155,12 +155,15 @@ class ImportService:
 
     def file_bytes(self, file_id: int) -> tuple[bytes, str]:
         row = self.file(file_id)
-        path = Path(row["path"])
-        if not path.exists():
+        staging_root = self.staging.resolve()
+        path = Path(row["path"]).resolve()
+        if not path.is_relative_to(staging_root) or not path.is_file():
             raise ArchiveError(
                 "Die Datei im Eingang wurde nicht mehr gefunden.", "datei_fehlt", 410
             )
-        return path.read_bytes(), row["mime"]
+        raw = path.read_bytes()
+        mime = sniff_mime(raw[:16]) or "application/octet-stream"
+        return raw, mime
 
     # --- Uebernahme -------------------------------------------------------------------
 

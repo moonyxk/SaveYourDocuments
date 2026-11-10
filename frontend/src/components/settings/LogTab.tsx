@@ -170,7 +170,7 @@ function LogsCard() {
             <ErrorBox error={text.error} retry={() => void text.refetch()} />
           ) : (
             <>
-              <pre className="st-log" tabIndex={0} aria-label="Inhalt des technischen Protokolls" data-testid="log-text">
+              <pre className="st-log" aria-label="Inhalt des technischen Protokolls" data-testid="log-text">
                 {text.data || "Die Datei ist leer."}
               </pre>
               <div className="actions" style={{ marginTop: ".75rem" }}>

@@ -93,6 +93,12 @@ export function CompanyCombobox({
               aria-selected={i === active}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => pick(c)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  pick(c);
+                }
+              }}
             >
               <span>{c.name}</span>
               <span className="muted">{c.documents === 1 ? "1 Dokument" : `${c.documents} Dokumente`}</span>
@@ -105,6 +111,12 @@ export function CompanyCombobox({
               aria-selected={active === matches.length}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => setOpen(false)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setOpen(false);
+                }
+              }}
             >
               <span>
                 Neue Firma „{value.name.trim()}“ anlegen

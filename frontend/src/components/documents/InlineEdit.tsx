@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ApiError, errorText } from "../../lib/api";
 
 /** Eine Zeile "Bezeichnung / Wert / Aendern" mit eigenem Entwurf, damit Neuladen nichts ueberschreibt. */
@@ -20,6 +20,20 @@ export default function InlineEdit<T>({
   const [draft, setDraft] = useState<T>(initial);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    const el = formRef.current;
+    if (!editing || !el) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setEditing(false);
+      }
+    };
+    el.addEventListener("keydown", onKey);
+    return () => el.removeEventListener("keydown", onKey);
+  }, [editing]);
 
   const submit = async () => {
     setBusy(true);
@@ -60,15 +74,10 @@ export default function InlineEdit<T>({
       <dt>{label}</dt>
       <dd className="edit">
         <form
+          ref={formRef}
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.stopPropagation();
-              setEditing(false);
-            }
           }}
         >
           <label className="sr" htmlFor={id}>

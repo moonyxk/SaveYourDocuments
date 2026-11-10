@@ -11,15 +11,37 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DIST_DIR = REPO_ROOT / "backend" / "dist" / "syd-backend"
+ALLOWED_BINARIES = (
+    DIST_DIR / "syd-backend.exe",
+    DIST_DIR / "syd-backend",
+)
+
+
+def _resolve_backend_exe(argv: list[str]) -> Path:
+    if len(argv) > 1:
+        requested = Path(argv[1]).resolve()
+        for candidate in ALLOWED_BINARIES:
+            if candidate.resolve() == requested:
+                return candidate
+        raise ValueError(f"Nicht erlaubter Pfad fuer Smoke-Test: {argv[1]}")
+    for candidate in ALLOWED_BINARIES:
+        if candidate.is_file():
+            return candidate
+    return ALLOWED_BINARIES[0]
 
 
 def main() -> int:
-    exe = sys.argv[1]
+    exe = str(_resolve_backend_exe(sys.argv))
     token = "smoke-token"
     with tempfile.TemporaryDirectory() as data:
         env = dict(os.environ, SYD_TOKEN=token, SYD_DATA_DIR=data)
-        proc = subprocess.Popen(
+        proc = subprocess.Popen(  # NOSONAR
             [exe, "--no-browser", "--no-multicast", "--localsend-port", "0"],
             stdout=subprocess.PIPE,
             env=env,

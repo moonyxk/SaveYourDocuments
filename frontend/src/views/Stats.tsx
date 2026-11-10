@@ -111,7 +111,7 @@ export default function Stats() {
                 <label htmlFor="s-year">Jahr</label>
                 <select id="s-year" value={year} onChange={(e) => setYearPick(e.target.value)}>
                   <option value="alle">Alle Jahre</option>
-                  {[...new Set([...yearList, year].filter((y) => y !== "alle"))].sort().reverse().map((y) => (
+                  {[...new Set([...yearList, year].filter((y) => y !== "alle"))].sort((a, b) => b.localeCompare(a)).map((y) => (
                     <option key={y} value={y}>
                       {y}
                     </option>
@@ -151,7 +151,7 @@ export default function Stats() {
             </div>
             <label className="check" style={{ marginTop: ".75rem" }}>
               <input type="checkbox" checked={withAll} onChange={(e) => setWithAll(e.target.checked)} />
-              Mahnungen und Zahlungsbelege mitzählen
+              <span>Mahnungen und Zahlungsbelege mitzählen</span>
             </label>
             <p className="hint" style={{ marginTop: 0 }}>
               {withAll

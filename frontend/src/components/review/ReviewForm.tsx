@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, errorText } from "../../lib/api";
 import { centsToInput, parseEuro } from "../../lib/format";
@@ -103,7 +103,7 @@ function OcrText({ docId }: { docId: number }) {
         .map((p) => (
           <div key={p.page}>
             {q.data.pages.length > 1 ? <div className="muted rv-small" style={{ marginTop: "0.5rem" }}>Seite {p.page}</div> : null}
-            <pre className="rv-text" tabIndex={0} aria-label={`Erkannter Text, Seite ${p.page}`}>
+            <pre className="rv-text" aria-label={`Erkannter Text, Seite ${p.page}`}>
               {p.text}
             </pre>
           </div>
@@ -403,7 +403,12 @@ export function ReviewForm({
         if (!ok) return;
       }
 
-      const tagsChanged = [...d.tag_ids].sort().join() !== detail.tags.map((t) => t.id).sort().join();
+      const tagsChanged =
+        [...d.tag_ids].sort((a, b) => a - b).join(",") !==
+        detail.tags
+          .map((t) => t.id)
+          .sort((a, b) => a - b)
+          .join(",");
       if (tagsChanged) await api.put(`/api/documents/${docId}/tags`, { tag_ids: d.tag_ids });
       if (d.paid !== detail.paid) await api.post(`/api/documents/${docId}/paid`, { paid: d.paid });
 
@@ -469,15 +474,25 @@ export function ReviewForm({
     void submit({ company, createNew: true });
   };
 
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+
+  useEffect(() => {
+    const el = formRef.current;
+    if (!el) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        void submitRef.current();
+      }
+    };
+    el.addEventListener("keydown", onKey);
+    return () => el.removeEventListener("keydown", onKey);
+  }, []);
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     void submit();
-  };
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      void submit();
-    }
   };
 
   const tagList = tags.data?.items ?? [];
@@ -487,7 +502,7 @@ export function ReviewForm({
 
   return (
     <>
-    <form className="rv-form" ref={formRef} onSubmit={onSubmit} onKeyDown={onKey} aria-label="Angaben zum Dokument" noValidate>
+    <form className="rv-form" ref={formRef} onSubmit={onSubmit} aria-label="Angaben zum Dokument" noValidate>
       <div className="rv-sect">
         <h2>Angaben prüfen</h2>
         <Field

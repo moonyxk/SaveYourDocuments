@@ -51,7 +51,7 @@ function templateError(path: string, file: string): string {
     ["Ordner", path],
     ["Dateiname", file],
   ] as const) {
-    for (const m of t.matchAll(/\{([^}]*)\}/g)) {
+    for (const m of t.matchAll(/\{([^{}]*)\}/g)) {
       if (!allowed.has(m[1])) return `„{${m[1]}“ ist kein gültiger Platzhalter (${label}). Nutze die Schaltflächen unter dem Feld.`.replace("{" + m[1] + "“", "{" + m[1] + "}“");
     }
   }
@@ -495,7 +495,7 @@ export default function ExportView() {
                 {archivedInPlan ? <Badge tone="gray"> ▣ {archivedInPlan} aus dem Archiv</Badge> : null}
                 {waiting ? <span className="muted"> · wird aktualisiert …</span> : null}
               </p>
-              <div className="dx-path-list" role="region" aria-label="Vorschau der Dateien" tabIndex={0}>
+              <div className="dx-path-list" role="region" aria-label="Vorschau der Dateien">
                 <ul className="list">
                   {(plan.data?.items ?? []).slice(0, 12).map((i) => (
                     <li key={`${i.document_id}-${i.page}`} className="item">

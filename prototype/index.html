@@ -235,7 +235,7 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
       <div class="grid g2">
         <div class="card"><h2>Anzeige</h2>
           <div class="field"><label for="fsz">Schriftgröße</label><select id="fsz"><option value="16">Normal (16)</option><option value="18">Groß (18)</option><option value="14">Dicht (14)</option></select></div>
-          <div class="field"><label><span>Metadaten im Namen anzeigen</span></label><button class="chip" aria-pressed="true" id="meta-name">An</button><div class="hint" id="name-demo">Beispiel: Telekom_Rechnung_2026-09_49,99 €.pdf</div></div>
+          <div class="field"><label for="meta-name"><span>Metadaten im Namen anzeigen</span></label><button class="chip" aria-pressed="true" id="meta-name">An</button><div class="hint" id="name-demo">Beispiel: Telekom_Rechnung_2026-09_49,99 €.pdf</div></div>
         </div>
         <div class="card"><h2>Sicherheit</h2>
           <p>Dein Archiv ist verschlüsselt und nur auf diesem Windows-Konto lesbar.</p>
@@ -353,8 +353,8 @@ function renderReview(){
 function newCompany(d){const name=$('#f-firma').value.trim();d.firma=name;modal(`<h2 id="ov-title">Neue Firma anlegen?</h2><p>„${esc(name)}“ kennt das Programm noch nicht. Soll es einen neuen Ordner dafür anlegen?</p><div class="actions"><button class="btn ghost" id="m-cancel">Zurück</button><button class="btn secondary" id="m-alias">Ist eine bekannte Firma …</button><button class="btn primary" id="m-create">Ja, Ordner anlegen</button></div>`);
  $('#m-cancel').onclick=closeModal;$("#m-create").onclick=()=>{closeModal();finish(d,`Ordner „${name}“ angelegt`)};$('#m-alias').onclick=()=>{closeModal();toast('Im echten Programm wählst du hier die vorhandene Firma')}}
 function finish(d,extra){
-  const raw=$('#f-betrag').value.replace(/\./g,'').replace(',','.');
-  state.docs.unshift({id:d.id,firma:$('#f-firma').value,art:$('#f-art').value,bereich:$('#f-bereich').value,datum:$('#f-datum').value||d.datum,betrag:parseFloat(raw)||0,bezahlt:false,faellig:d.frist&&d.frist.datum,geprueft:true,name:'(neu)'});
+  const raw=$('#f-betrag').value.replaceAll('.','').replace(',','.');
+  state.docs.unshift({id:d.id,firma:$('#f-firma').value,art:$('#f-art').value,bereich:$('#f-bereich').value,datum:$('#f-datum').value||d.datum,betrag:Number.parseFloat(raw)||0,bezahlt:false,faellig:d.frist&&d.frist.datum,geprueft:true,name:'(neu)'});
   const nd=state.docs[0];nd.name=`${nd.firma}_${nd.art}_${nd.datum.slice(0,7)}_${nd.betrag.toFixed(2).replace('.',',')} €.pdf`;
   if(d.frist){const fd=$('#f-frist').value;state.fristen.push({id:Date.now(),doc:`${nd.firma} · ${nd.art}`,typ:d.frist.typ==='Zahlungsziel'?'Zahlung':'Vertrag',datum:fd,erledigt:false})}
   state.queue=state.queue.filter(x=>x!==d);state.qi=0;toast(extra||'Gespeichert. Erinnerungen sind eingerichtet.');renderNav();renderReview()}

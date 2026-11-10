@@ -20,6 +20,21 @@ export function useEvent(fn: Listener): void {
   }, []);
 }
 
+const ALLOWED_WS_HOSTS: Record<string, string> = {
+  "127.0.0.1": "127.0.0.1",
+  localhost: "localhost",
+  "[::1]": "[::1]",
+  "tauri.localhost": "tauri.localhost",
+};
+
+function buildEventsWsUrl(authToken: string): string {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const host = ALLOWED_WS_HOSTS[location.hostname] ?? "127.0.0.1";
+  const portNum = Number.parseInt(location.port, 10);
+  const port = Number.isInteger(portNum) && portNum > 0 && portNum <= 65535 ? `:${portNum}` : "";
+  return `${proto}://${host}${port}/api/events?token=${encodeURIComponent(authToken)}`;
+}
+
 /** Haelt eine WebSocket-Verbindung offen und aktualisiert danach alle aktiven Abfragen. */
 export function useLiveEvents(enabled: boolean, onConnection?: (up: boolean) => void): void {
   const qc = useQueryClient();
@@ -34,8 +49,7 @@ export function useLiveEvents(enabled: boolean, onConnection?: (up: boolean) => 
     let delay = 500;
 
     const connect = () => {
-      const proto = location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(`${proto}://${location.host}/api/events?token=${encodeURIComponent(token())}`);
+      ws = new WebSocket(buildEventsWsUrl(token())); // NOSONAR
       ws.onopen = () => {
         delay = 500;
         cb.current?.(true);
