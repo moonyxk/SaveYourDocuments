@@ -16,6 +16,7 @@ const Deadlines = lazy(() => import("./views/Deadlines"));
 const Stats = lazy(() => import("./views/Stats"));
 const Export = lazy(() => import("./views/Export"));
 const Settings = lazy(() => import("./views/Settings"));
+const Help = lazy(() => import("./views/Help"));
 
 const NAV: { id: View; label: string; icon: string; sep?: boolean }[] = [
   { id: "start", label: "Start", icon: "start" },
@@ -46,11 +47,9 @@ function Shell({ mode }: { mode: string | null }) {
   const nav = useMemo(() => ({ view, params, go }), [view, params, go]);
 
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => api.get<Json>("/api/settings") });
-  const [tourOpen, setTourOpen] = useState(false);
   const autoTour = settings.data?.tutorial_done === false && !tourDismissed.current;
   const closeTour = useCallback(() => {
     tourDismissed.current = true;
-    setTourOpen(false);
     go("start");
     api
       .put<Json>("/api/settings", { tutorial_done: true })
@@ -119,7 +118,7 @@ function Shell({ mode }: { mode: string | null }) {
             <span className={`dot ${dotClass}`} />
             <span>{pill}</span>
           </div>
-          <button className="btn ghost small help-btn" data-tour="help" onClick={() => setTourOpen(true)} title="Kurze Tour durch das Programm">
+          <button className="btn ghost small help-btn" onClick={() => go("help")} title="Anleitungen zu allen Funktionen öffnen">
             <span aria-hidden="true">?</span> Hilfe
           </button>
           {mode === "password" ? (
@@ -154,10 +153,11 @@ function Shell({ mode }: { mode: string | null }) {
               {view === "stats" && <Stats />}
               {view === "export" && <Export />}
               {view === "settings" && <Settings />}
+              {view === "help" && <Help />}
             </Suspense>
           </div>
         </main>
-        {tourOpen || autoTour ? <Tutorial onGo={go} onClose={closeTour} /> : null}
+        {autoTour ? <Tutorial onGo={go} onClose={closeTour} /> : null}
       </div>
     </NavContext.Provider>
   );

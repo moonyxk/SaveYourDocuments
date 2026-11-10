@@ -67,11 +67,10 @@ const STEPS: Step[] = [
     place: "right",
   },
   {
-    title: "Hilfe gibt es immer",
-    text: "Mit diesem Knopf startest du die Tour jederzeit neu. Du bist startklar!",
-    view: "start",
-    target: "help",
-    place: "bottom",
+    title: "Anleitungen gibt es immer",
+    text: "Über „Hilfe“ oben rechts findest du ausführliche Schritt-für-Schritt-Anleitungen zum Importieren, Sortieren und zu allen weiteren Funktionen.",
+    view: "help",
+    place: "center",
   },
 ];
 

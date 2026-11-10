@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-export type View = "start" | "import" | "review" | "docs" | "fristen" | "stats" | "export" | "settings";
+export type View = "start" | "import" | "review" | "docs" | "fristen" | "stats" | "export" | "settings" | "help";
 
 export type NavParams = {
   /** Suchtext fuer "docs" */
