@@ -442,12 +442,56 @@ def test_update_check_endpoints(tmp_path, monkeypatch):
         assert c.post("/api/updates/open", headers=H).status_code == 404
         opened = []
         monkeypatch.setattr("webbrowser.open", lambda u: opened.append(u) or True)
-        url = "https://github.com/moonyxc/SaveYourDocuments/releases/tag/v2"
+        url = "https://github.com/moonyxk/SaveYourDocuments/releases/tag/v2"
         monkeypatch.setattr(
             updates,
             "check",
-            lambda: {"status": "update", "url": url, "checked_at": "2099-01-01T00:00:00+00:00"},
+            lambda **kwargs: {
+                "status": "update",
+                "url": url,
+                "checked_at": "2099-01-01T00:00:00+00:00",
+            },
         )
         c.post("/api/updates/check", json={}, headers=H)
         assert c.post("/api/updates/open", headers=H).json()["opened"] is True
         assert opened == [url]
+
+
+def test_update_channel_is_saved_and_cached_separately(tmp_path, monkeypatch):
+    from syd import updates
+
+    calls = []
+
+    def check(*, include_prerelease):
+        calls.append(include_prerelease)
+        return {
+            "status": "update",
+            "latest": "v99.0.0-beta.1" if include_prerelease else "v98.0.0",
+            "url": "https://github.com/moonyxk/SaveYourDocuments/releases/tag/v98.0.0",
+            "checked_at": "2099-01-01T00:00:00+00:00",
+        }
+
+    monkeypatch.setattr(updates, "check", check)
+    c, _ = make(tmp_path)
+    with c:
+        setup_key(c)
+        assert c.get("/api/settings", headers=H).json()["update_include_prerelease"] is False
+        assert (
+            c.put("/api/settings", json={"update_include_prerelease": "yes"}, headers=H).status_code
+            == 400
+        )
+        c.put("/api/settings", json={"update_check_auto": True}, headers=H)
+        c.post("/api/updates/check", json={"auto": True}, headers=H)
+        saved = c.put("/api/settings", json={"update_include_prerelease": True}, headers=H)
+        assert saved.json()["update_include_prerelease"] is True
+        assert c.get("/api/updates", headers=H).json()["status"] == "nicht_geprueft"
+        assert c.post("/api/updates/open", headers=H).status_code == 404
+        result = c.post("/api/updates/check", json={"auto": True}, headers=H).json()
+        assert result["latest"] == "v99.0.0-beta.1"
+        c.post("/api/updates/check", json={"auto": True}, headers=H)
+        assert calls == [False, True]
+        c.put("/api/settings", json={"update_include_prerelease": False}, headers=H)
+        assert c.get("/api/updates", headers=H).json()["status"] == "nicht_geprueft"
+        result = c.post("/api/updates/check", json={}, headers=H).json()
+        assert result["latest"] == "v98.0.0"
+        assert calls == [False, True, False]

@@ -14,7 +14,7 @@ import httpx
 
 from . import __version__
 
-OWNER = "moonyxc"
+OWNER = "moonyxk"
 REPO = "SaveYourDocuments"
 API = "https://api.github.com"
 RELEASE_PREFIX = f"https://github.com/{OWNER}/{REPO}/"

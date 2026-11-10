@@ -1,6 +1,6 @@
 [project]
 name = "save-your-documents"
-version = "0.2.1"
+version = "0.2.2"
 description = "Lokales Dokumentenarchiv: Backend (Sidecar)"
 requires-python = ">=3.11"
 dependencies = [

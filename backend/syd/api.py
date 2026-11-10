@@ -855,27 +855,36 @@ def create_app(
             state.ls.refresh()
         return new
 
+    def cached_update():
+        if updates_state.get("include_prerelease") == state.repo.get_setting(
+            "update_include_prerelease"
+        ):
+            return updates_state.get("last")
+        return None
+
     @app.get("/api/updates")
     def updates_cached():
-        return updates_state.get("last") or {"status": "nicht_geprueft", "current": __version__}
+        return cached_update() or {"status": "nicht_geprueft", "current": __version__}
 
     @app.post("/api/updates/check")
     async def updates_check(body: dict = Body(default={})):
-        last = updates_state.get("last")
+        include_prerelease = state.repo.get_setting("update_include_prerelease")
+        last = cached_update()
         if body.get("auto"):
             # Automatische Pruefung: nur wenn eingeschaltet und hoechstens einmal pro 12 Stunden.
             if not state.repo.get_setting("update_check_auto"):
                 raise _bad("Die automatische Suche nach Updates ist ausgeschaltet.", "aus", 409)
             if last and last["status"] != "fehler" and _age_hours(last["checked_at"]) < 12:
                 return last
-        result = await run_in_threadpool(updates.check)
+        result = await run_in_threadpool(updates.check, include_prerelease=include_prerelease)
         updates_state["last"] = result
+        updates_state["include_prerelease"] = include_prerelease
         return result
 
     @app.post("/api/updates/open")
     async def updates_open():
         # Nur die zuletzt gefundene Release-Seite dieses Projekts, nie eine Adresse vom Aufrufer.
-        last = updates_state.get("last") or {}
+        last = cached_update() or {}
         url = last.get("url") if last.get("status") == "update" else None
         if not url or not url.startswith(updates.RELEASE_PREFIX):
             raise _bad("Es gibt keine Release-Seite zum Öffnen.", "kein_update", 404)

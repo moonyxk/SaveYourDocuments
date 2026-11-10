@@ -12,7 +12,7 @@ def rel(tag, pre=False, draft=False):
         "tag_name": tag,
         "prerelease": pre,
         "draft": draft,
-        "html_url": f"https://github.com/moonyxc/SaveYourDocuments/releases/tag/{tag}",
+        "html_url": f"https://github.com/moonyxk/SaveYourDocuments/releases/tag/{tag}",
     }
 
 
@@ -51,12 +51,16 @@ def client(handler):
 
 def test_check_follows_pages_and_ignores_order():
     def handler(req: httpx.Request):
+        assert req.url.host == "api.github.com"
+        assert req.url.path == "/repos/moonyxk/SaveYourDocuments/releases"
         if "page=2" in str(req.url):
             return httpx.Response(200, json=[rel("v9.0.0")])
         return httpx.Response(
             200,
             json=[rel("v1.0.0")],
-            headers={"link": '<https://api.github.com/x?page=2>; rel="next"'},
+            headers={
+                "link": '<https://api.github.com/repos/moonyxk/SaveYourDocuments/releases?page=2>; rel="next"'
+            },
         )
 
     r = updates.check("1.0.0", client=client(handler))
@@ -115,4 +119,4 @@ def test_version_is_consistent_everywhere():
 
 def test_foreign_release_url_is_replaced():
     r = select_update("1.0.0", [{"tag_name": "v2.0.0", "html_url": "https://evil.example/x"}])
-    assert r["url"] == "https://github.com/moonyxc/SaveYourDocuments/releases"
+    assert r["url"] == "https://github.com/moonyxk/SaveYourDocuments/releases"

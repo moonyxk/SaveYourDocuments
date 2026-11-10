@@ -8,7 +8,7 @@ export function useAutoUpdateCheck() {
   const settings = useSettings();
   const on = settings.data?.update_check_auto === true;
   return useQuery({
-    queryKey: ["updates", "auto"],
+    queryKey: ["updates", "auto", settings.data?.update_include_prerelease === true],
     queryFn: () => api.post<Json>("/api/updates/check", { auto: true }),
     enabled: on,
     staleTime: 60 * 60 * 1000,
@@ -60,16 +60,21 @@ export function UpdateSection({ version }: { version: string }) {
   const { toast } = useUi();
   const settings = useSettings();
   const { save, saving } = useSaveSettings();
-  const last = useQuery({ queryKey: ["updates", "last"], queryFn: () => api.get<Json>("/api/updates") });
+  const includePrerelease = settings.data?.update_include_prerelease === true;
+  const last = useQuery({
+    queryKey: ["updates", "last", includePrerelease],
+    queryFn: () => api.get<Json>("/api/updates"),
+    enabled: settings.isSuccess,
+  });
   const run = useMutation({
     mutationFn: () => api.post<Json>("/api/updates/check", {}),
     onSuccess: (data) => {
-      qc.setQueryData(["updates", "last"], data);
+      qc.setQueryData(["updates", "last", includePrerelease], data);
       void qc.invalidateQueries({ queryKey: ["updates", "auto"] });
     },
     onError: (e) => toast(errorText(e), "bad"),
   });
-  const info = (run.data ?? last.data) as Json | undefined;
+  const info = last.data;
   const shown = info && info.status !== "nicht_geprueft" ? result(info) : null;
   return (
     <Section
@@ -84,7 +89,7 @@ export function UpdateSection({ version }: { version: string }) {
         <dd data-testid="update-checked">{info?.checked_at ? localTime(info.checked_at) : "Noch nicht"}</dd>
       </dl>
       <div className="actions" style={{ marginBottom: "1rem" }}>
-        <button className="btn primary" onClick={() => run.mutate()} disabled={run.isPending} data-testid="update-check">
+        <button className="btn primary" onClick={() => run.mutate()} disabled={run.isPending || saving || !settings.isSuccess} data-testid="update-check">
           Jetzt nach Updates suchen
         </button>
         {run.isPending ? <Spinner label="Suche läuft …" /> : null}
@@ -100,14 +105,28 @@ export function UpdateSection({ version }: { version: string }) {
         </div>
       ) : null}
       {settings.data ? (
-        <Switch
-          checked={settings.data.update_check_auto === true}
-          disabled={saving}
-          onChange={(v) => void save({ update_check_auto: v })}
-          title="Automatisch nach Updates suchen"
-          text="Beim Öffnen der Startseite fragt das Programm höchstens alle 12 Stunden bei GitHub nach und weist dich auf neue Versionen hin."
-          testId="update-auto"
-        />
+        <>
+          <Switch
+            checked={includePrerelease}
+            disabled={saving || run.isPending}
+            onChange={async (v) => {
+              if (await save({ update_include_prerelease: v })) {
+                await qc.invalidateQueries({ queryKey: ["updates"] });
+              }
+            }}
+            title="Beta-Updates einschließen"
+            text="Berücksichtigt zusätzlich Vorabversionen. Sie können noch Fehler enthalten. Ausgeschaltet werden nur stabile Releases angeboten."
+            testId="update-prerelease"
+          />
+          <Switch
+            checked={settings.data.update_check_auto === true}
+            disabled={saving}
+            onChange={(v) => void save({ update_check_auto: v })}
+            title="Automatisch nach Updates suchen"
+            text="Beim Öffnen der Startseite fragt das Programm höchstens alle 12 Stunden bei GitHub nach und weist dich auf neue Versionen hin."
+            testId="update-auto"
+          />
+        </>
       ) : null}
     </Section>
   );

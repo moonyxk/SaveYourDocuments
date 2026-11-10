@@ -86,6 +86,7 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "ollama_model": "qwen2.5:7b",
     "font_size": 16,
     "update_check_auto": False,
+    "update_include_prerelease": False,
     "developer_mode": False,
     "tutorial_done": False,
 }
