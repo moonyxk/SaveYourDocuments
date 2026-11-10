@@ -267,7 +267,10 @@ class AppState:
             tag = stamp if sequence == 1 else f"{stamp}-{sequence}"
             targets = [
                 path.with_name(f"{path.name}.unfertig-{tag}"),
-                *(path.with_name(f"{path.name}{suffix}.unfertig-{tag}") for suffix in side_suffixes),
+                *(
+                    path.with_name(f"{path.name}{suffix}.unfertig-{tag}")
+                    for suffix in side_suffixes
+                ),
             ]
             if not any(target.exists() for target in targets):
                 break

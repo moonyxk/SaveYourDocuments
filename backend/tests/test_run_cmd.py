@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="run.cmd requires Windows")
+pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="start.cmd requires Windows")
 
 
 @pytest.fixture
 def launcher(tmp_path, request):
     root = Path(__file__).resolve().parents[2]
-    shutil.copyfile(root / "run.cmd", tmp_path / "run.cmd")
+    shutil.copyfile(root / "start.cmd", tmp_path / "start.cmd")
     (tmp_path / "backend").mkdir()
     if getattr(request, "param", True):
         venv.create(tmp_path / "backend" / ".venv", with_pip=False)
@@ -84,7 +84,7 @@ Path(os.environ["LAUNCH_TEST_STATE"], "started").write_text(json.dumps([
         if extra_env:
             run_env.update(extra_env)
         return subprocess.run(
-            [env["COMSPEC"], "/d", "/c", str(tmp_path / "run.cmd"), "--no-browser"],
+            [env["COMSPEC"], "/d", "/c", str(tmp_path / "start.cmd"), "--no-browser"],
             cwd=tmp_path,
             env=run_env,
             capture_output=True,

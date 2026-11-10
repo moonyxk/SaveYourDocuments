@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 rem Startet das Programm direkt aus dem Quellcode (ohne Installer).
 rem Beim ersten Mal wird die Umgebung eingerichtet. Weitere Optionen werden durchgereicht,
-rem z. B.: run.cmd --data-dir C:\Temp\syd-test --no-browser
+rem z. B.: start.cmd --data-dir C:\Temp\syd-test --no-browser
 
 if not exist "backend\.venv\Scripts\python.exe" (
   echo Richte Python-Umgebung ein ...

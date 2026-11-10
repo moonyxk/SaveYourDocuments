@@ -20,7 +20,7 @@ python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 - Start im Browser ohne Hülle: `.venv/bin/python -m syd.main` (gibt `http://127.0.0.1:<port>/#token=…` aus). Hilfreiche Schalter: `--data-dir`, `--port`, `--localsend-port`, `--no-multicast`, `--no-browser`, `--ui-dir`.
 - Umgebungsvariablen: `SYD_DATA_DIR` (Datenordner), `SYD_TOKEN` (Token von der Hülle), `SYD_TESSERACT`/`SYD_TESSDATA` (eigenes Tesseract).
 
-Unter Windows startet `run.cmd` das Programm aus dem Quellcode und wiederholt bei Bedarf
+Unter Windows startet `start.cmd` das Programm aus dem Quellcode und wiederholt bei Bedarf
 eine fehlgeschlagene Installation. Dabei wird der pip-Cache nicht verwendet; ein benötigter
 Conan-Cache liegt standardmäßig in `backend\.venv\conan` und kann über `CONAN_HOME`
 vorgegeben werden. Falls für die Python-Version kein SQLCipher-Wheel verfügbar ist, wird
