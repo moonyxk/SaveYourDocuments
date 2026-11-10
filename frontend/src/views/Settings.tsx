@@ -47,6 +47,7 @@ export default function Settings() {
             <button
               key={t.id}
               data-tab={t.id}
+              data-tour={`settings-${t.id}`}
               aria-current={t.id === tab ? "page" : undefined}
               onClick={() => go("settings", { tab: t.id })}
             >

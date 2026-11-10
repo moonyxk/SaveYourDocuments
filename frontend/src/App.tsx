@@ -6,7 +6,7 @@ import { useApplyDisplaySettings } from "./lib/display";
 import { NavContext, type NavParams, type View } from "./lib/nav";
 import { Icon, Spinner, useUi } from "./components/ui";
 import { Setup, Unlock } from "./views/Gate";
-import { Tutorial } from "./components/Tutorial";
+import { Tutorial, type TutorialGuide } from "./components/Tutorial";
 
 const Dashboard = lazy(() => import("./views/Dashboard"));
 const Import = lazy(() => import("./views/Import"));
@@ -38,6 +38,7 @@ function Shell({ mode }: { mode: string | null }) {
   const [q, setQ] = useState("");
   const [live, setLive] = useState(true);
   const tourDismissed = useRef(false);
+  const [helpTour, setHelpTour] = useState<TutorialGuide | null>(null);
 
   const go = useCallback((v: View, p: NavParams = {}) => {
     setView(v);
@@ -56,6 +57,10 @@ function Shell({ mode }: { mode: string | null }) {
       .then((d) => qc.setQueryData(["settings"], d))
       .catch(() => {});
   }, [go, qc]);
+  const closeHelpTour = useCallback(() => {
+    setHelpTour(null);
+    go("help");
+  }, [go]);
 
   useLiveEvents(true, setLive);
   useEvent((e) => {
@@ -153,11 +158,13 @@ function Shell({ mode }: { mode: string | null }) {
               {view === "stats" && <Stats />}
               {view === "export" && <Export />}
               {view === "settings" && <Settings />}
-              {view === "help" && <Help />}
+              {view === "help" && <Help onStart={setHelpTour} />}
             </Suspense>
           </div>
         </main>
-        {autoTour ? <Tutorial onGo={go} onClose={closeTour} /> : null}
+        {helpTour ? (
+          <Tutorial key={helpTour.id} guide={helpTour} onGo={go} onClose={closeHelpTour} />
+        ) : autoTour ? <Tutorial onGo={go} onClose={closeTour} /> : null}
       </div>
     </NavContext.Provider>
   );

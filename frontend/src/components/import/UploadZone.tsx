@@ -46,6 +46,7 @@ export function UploadZone() {
   return (
     <div>
       <div
+        data-tour="import-upload"
         className={`drop imp-drop ${over ? "over" : ""}`}
         onDragEnter={(e) => {
           e.preventDefault();
