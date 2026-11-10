@@ -91,6 +91,7 @@ def test_money_parsing_and_formatting():
 def test_defaults_seeded_once(repo):
     n = len(repo.list_categories())
     assert n >= 10
+    assert repo.find_category("Freizeit") is not None
     Repo(repo.v)
     assert len(repo.list_categories()) == n
     assert Deadlines(repo).default_leads("zahlungsziel") == [7, 1]

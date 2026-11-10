@@ -51,6 +51,7 @@ DEFAULT_CATEGORIES = [
     "Wohnen & Miete",
     "Auto & Verkehr",
     "Arbeit & Gehalt",
+    "Freizeit",
     "Sonstiges",
 ]
 
