@@ -1,6 +1,6 @@
 [package]
 name = "save-your-documents"
-version = "0.2.2"
+version = "0.3.0"
 description = "Save Your Documents: lokales, verschlüsseltes Dokumentenarchiv"
 edition = "2021"
 rust-version = "1.77"

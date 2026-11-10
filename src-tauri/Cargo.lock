@@ -3018,7 +3018,7 @@ dependencies = [
 
 [[package]]
 name = "save-your-documents"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "rand 0.8.8",
  "serde_json",
