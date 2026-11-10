@@ -9,16 +9,23 @@ import logging
 import os
 import secrets
 import socket
+import subprocess
 import sys
 import webbrowser
 from pathlib import Path
 
 import uvicorn
 
-from . import logs
-from .api import create_app
-from .config import Paths
-from .state import AppState
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_VERSION_SYNC = _REPO_ROOT / "scripts" / "sync-version.py"
+if _VERSION_SYNC.is_file() and (_REPO_ROOT / "version.txt").is_file():
+    subprocess.run([sys.executable, str(_VERSION_SYNC)], check=True)
+    sys.modules["syd"].__version__ = (_REPO_ROOT / "version.txt").read_text("utf-8").strip()
+
+from . import logs  # noqa: E402
+from .api import create_app  # noqa: E402
+from .config import Paths  # noqa: E402
+from .state import AppState  # noqa: E402
 
 
 def _free_port() -> int:
