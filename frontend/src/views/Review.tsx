@@ -3,6 +3,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { date, eur } from "../lib/format";
 import { useNav } from "../lib/nav";
+import { firstReviewItemAfter } from "../lib/reviewQueue";
 import { Badge, Empty, ErrorBox, PageHead, Spinner } from "../components/ui";
 import { BatchConfirm, useReviewSettings } from "../components/review/BatchConfirm";
 import { DocumentViewer } from "../components/review/DocumentViewer";
@@ -39,14 +40,17 @@ export default function Review() {
 
   const open = (id: number) => go("review", { doc: id });
   const next = async () => {
-    let n: QueueItem | undefined = items[index + 1];
-    if (!n && queue.hasNextPage) {
+    const refreshed = await queue.refetch();
+    if (refreshed.isError) return;
+    let all = refreshed.data?.pages.flatMap((page) => page.items) ?? [];
+    let n = firstReviewItemAfter(all, current);
+    if (!n && refreshed.data?.pages.at(-1)?.has_more) {
       const result = await queue.fetchNextPage();
-      const all = result.data?.pages.flatMap((page) => page.items) ?? [];
-      const pos = all.findIndex((i) => i.id === current);
-      n = all[pos + 1];
+      if (result.isError) return;
+      all = result.data?.pages.flatMap((page) => page.items) ?? all;
+      n = firstReviewItemAfter(all, current);
     }
-    n ??= items.find((i) => i.id !== current);
+    n ??= all.find((item) => item.id !== current);
     if (n) open(n.id);
     else go("start");
   };

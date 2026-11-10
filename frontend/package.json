@@ -9,7 +9,7 @@
     "prebuild": "python ../scripts/sync-version.py",
     "build": "tsc --noEmit && vite build",
     "pretypecheck": "python ../scripts/sync-version.py",
-    "test": "node --experimental-strip-types --test tests/format.test.ts",
+    "test": "node --experimental-strip-types --test tests/format.test.ts tests/reviewQueue.test.ts",
     "typecheck": "tsc --noEmit",
     "pretauri:dev": "python ../scripts/sync-version.py",
     "tauri:dev": "tauri dev",
