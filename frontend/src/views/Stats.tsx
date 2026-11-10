@@ -48,7 +48,10 @@ export default function Stats() {
     });
 
   const years = fetchStats("jahr", { ...base, group_by: "jahr" });
-  const yearList = (years.data?.rows ?? []).map((r) => r.label).filter((l) => /^\d{4}$/.test(l)).sort().reverse();
+  const yearList = (years.data?.rows ?? [])
+    .map((r) => r.label)
+    .filter((l) => /^\d{4}$/.test(l))
+    .sort((a, b) => b.localeCompare(a));
   const year = yearPick ?? (yearList.includes(thisYear) || !yearList.length ? thisYear : yearList[0]);
   const range = year === "alle" ? {} : { date_from: `${year}-01-01`, date_to: `${year}-12-31` };
   const scoped = { ...base, ...range };
@@ -149,8 +152,8 @@ export default function Stats() {
                 </select>
               </div>
             </div>
-            <label className="check" style={{ marginTop: ".75rem" }}>
-              <input type="checkbox" checked={withAll} onChange={(e) => setWithAll(e.target.checked)} />
+            <label className="check" htmlFor="s-with-all" style={{ marginTop: ".75rem" }}>
+              <input id="s-with-all" type="checkbox" checked={withAll} onChange={(e) => setWithAll(e.target.checked)} />
               <span>Mahnungen und Zahlungsbelege mitzählen</span>
             </label>
             <p className="hint" style={{ marginTop: 0 }}>

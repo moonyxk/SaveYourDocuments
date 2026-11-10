@@ -1,7 +1,7 @@
 {
   "name": "save-your-documents-ui",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.2.3",
   "type": "module",
   "scripts": {
     "predev": "python ../scripts/sync-version.py",
