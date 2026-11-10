@@ -112,10 +112,13 @@ class JobQueue:
         return n
 
     def _process(self, job: dict) -> None:
-        self.v.execute(
-            "UPDATE job SET state = 'laeuft', attempts = attempts + 1, updated_at = ? WHERE id = ?",
+        cur = self.v.execute(
+            "UPDATE job SET state = 'laeuft', attempts = attempts + 1, updated_at = ?"
+            " WHERE id = ? AND state = 'wartend'",
             (now_iso(), job["id"]),
         )
+        if cur.rowcount == 0:
+            return
         self.current = job["document_id"]
         self._emit("job.started", job["document_id"])
         code = None

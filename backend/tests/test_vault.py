@@ -87,15 +87,149 @@ def test_hash_dedup(path):
 def test_never_delete(path):
     with Vault.open(path, generate_key(), create=True) as v:
         doc, _ = v.add_document("x.jpg", "image/jpeg", [b"x"])
-        with pytest.raises(sqlcipher3.DatabaseError, match="nur archiviert"):
+        with pytest.raises(sqlcipher3.DatabaseError, match="zuerst in den Papierkorb"):
             v._conn.execute("DELETE FROM document WHERE id = ?", (doc,))
-        with pytest.raises(sqlcipher3.DatabaseError, match="nur archiviert"):
+        with pytest.raises(sqlcipher3.DatabaseError, match="nur aus dem Papierkorb"):
             v._conn.execute("DELETE FROM blob_store WHERE document_id = ?", (doc,))
         with pytest.raises(ValueError):
             v.archive(doc, "  ")
         v.archive(doc, "Fehlimport")
         d = v.get_document(doc)
         assert d["archived"] == 1 and d["archive_reason"] == "Fehlimport"
+
+
+def test_trash_hides_search_results_and_restores_previous_archive_state(path):
+    with Vault.open(path, generate_key(), create=True) as v:
+        active, _ = v.add_document("aktiv.pdf", "application/pdf", [b"active"])
+        archived, _ = v.add_document("archiv.pdf", "application/pdf", [b"archived"])
+        v.index_text(active, 1, "Suchbarer Brief")
+        v.archive(archived, "Vertrag beendet")
+
+        v.trash(active)
+        assert v.get_document(active)["deleted"] == 1
+        assert v.get_document(active)["deleted_at"]
+        assert v.search("suchbarer") == []
+        assert v.search("suchbarer", include_archived=True, include_deleted=True) == [active]
+        v.restore_from_trash(active)
+        assert v.get_document(active)["deleted"] == 0
+        assert v.search("suchbarer") == [active]
+
+        v.trash(archived)
+        v.restore_from_trash(archived)
+        restored = v.get_document(archived)
+        assert restored["deleted"] == 0
+        assert restored["archived"] == 1
+        assert restored["archive_reason"] == "Vertrag beendet"
+
+
+def test_purge_removes_document_data_and_keeps_id_only_audit(path):
+    with Vault.open(path, generate_key(), create=True) as v:
+        doc, _ = v.add_document("vertrag.pdf", "application/pdf", [b"secret original"])
+        other, _ = v.add_document("other.pdf", "application/pdf", [b"other"])
+        v.index_text(doc, 1, "secret OCR text")
+        v.execute(
+            "INSERT INTO thumbnail (document_id, page, image) VALUES (?,?,?)", (doc, 1, b"thumb")
+        )
+        v.execute("INSERT INTO tag (name) VALUES (?)", ("zuordnung",))
+        tag = v.scalar("SELECT id FROM tag WHERE name = ?", ("zuordnung",))
+        v.execute("INSERT INTO document_tag (document_id, tag_id) VALUES (?,?)", (doc, tag))
+        v.execute(
+            "INSERT INTO extraction (document_id, run_id, field, value, confidence, source)"
+            " VALUES (?,?,?,?,?,?)",
+            (doc, "run", "doc_type", "Vertrag", 0.9, "regex"),
+        )
+        v.execute(
+            "INSERT INTO reference_number (document_id, type, value, value_norm, source)"
+            " VALUES (?,?,?,?,?)",
+            (doc, "vertragsnummer", "abc", "ABC", "manuell"),
+        )
+        v.execute(
+            "INSERT INTO field_history (document_id, field, old, new, changed_at)"
+            " VALUES (?,?,?,?,?)",
+            (doc, "note", None, "secret note", "2026-01-01T00:00:00Z"),
+        )
+        v.execute(
+            "INSERT INTO import_batch (source, received_at) VALUES ('upload', '2026-01-01T00:00:00Z')"
+        )
+        batch = v.scalar("SELECT last_insert_rowid()")
+        v.execute(
+            "INSERT INTO import_file (batch_id, name, path, size, sha256, mime, state, document_id)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            (
+                batch,
+                "vertrag.pdf",
+                "staging/file",
+                1,
+                "hash",
+                "application/pdf",
+                "uebernommen",
+                doc,
+            ),
+        )
+        v.execute(
+            "INSERT INTO deadline (document_id, type, due_date, source, created_at)"
+            " VALUES (?,?,?,?,?)",
+            (doc, "vertragsende", "2027-01-01", "manuell", "2026-01-01T00:00:00Z"),
+        )
+        parent = v.scalar("SELECT last_insert_rowid()")
+        v.execute(
+            "INSERT INTO deadline (document_id, type, due_date, source, parent_id, created_at)"
+            " VALUES (?,?,?,?,?,?)",
+            (doc, "vertragsende", "2028-01-01", "manuell", parent, "2026-01-01T00:00:00Z"),
+        )
+        child = v.scalar("SELECT last_insert_rowid()")
+        v.execute(
+            "INSERT INTO reminder (deadline_id, lead_days, due_on) VALUES (?,?,?)",
+            (child, 7, "2027-12-25"),
+        )
+        v.execute(
+            "INSERT INTO document_link (from_id, to_id, type, created_at) VALUES (?,?,?,?)",
+            (doc, other, "gehoert_zu", "2026-01-01T00:00:00Z"),
+        )
+        v.execute(
+            "INSERT INTO job (document_id, kind, created_at, updated_at) VALUES (?,?,?,?)",
+            (doc, "process", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+        )
+
+        v.trash(doc)
+        assert v.purge(doc) is True
+        assert v.scalar("SELECT count(*) FROM document WHERE id = ?", (doc,)) == 0
+        document_tables = (
+            "blob_store",
+            "thumbnail",
+            "ocr_fts",
+            "document_tag",
+            "extraction",
+            "reference_number",
+            "field_history",
+            "ocr_text",
+            "deadline",
+            "job",
+            "import_file",
+        )
+        for table in document_tables:
+            assert v.scalar(f"SELECT count(*) FROM {table} WHERE document_id = ?", (doc,)) == 0, (
+                table
+            )
+        assert v.scalar("SELECT count(*) FROM reminder WHERE deadline_id = ?", (child,)) == 0
+        assert (
+            v.scalar(
+                "SELECT count(*) FROM document_link WHERE from_id = ? OR to_id = ?",
+                (doc, doc),
+            )
+            == 0
+        )
+        assert v.scalar("SELECT count(*) FROM document WHERE id = ?", (other,)) == 1
+        assert v.scalar("SELECT count(*) FROM tag WHERE id = ?", (tag,)) == 1
+        audit = v.rows("SELECT event, document_id FROM audit_log WHERE document_id = ?", (doc,))
+        assert [row["event"] for row in audit][-2:] == ["document.trashed", "document.purged"]
+        assert v.scalar("SELECT id FROM purged_document WHERE id = ?", (doc,)) == doc
+        assert v.scalar("PRAGMA secure_delete") == 1
+        v.trash(other)
+        assert v.purge(other) is True
+        following, _ = v.add_document("following.pdf", "application/pdf", [b"new"])
+        assert following > other
+        assert v.integrity_check()
 
 
 def test_audit_log_ids_only_and_append_only(path):

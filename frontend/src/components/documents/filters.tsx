@@ -15,6 +15,7 @@ export type Filters = {
   paid: "" | "ja" | "nein";
   state: string;
   archived: "nein" | "nur" | "ja";
+  trash: boolean;
   sort: string;
 };
 
@@ -31,6 +32,7 @@ export const EMPTY_FILTERS: Filters = {
   paid: "",
   state: "",
   archived: "nein",
+  trash: false,
   sort: "datum_ab",
 };
 

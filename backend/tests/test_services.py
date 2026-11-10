@@ -204,10 +204,58 @@ def test_search_and_filters(repo):
         repo.archive_document(ids[1], "  ")
 
 
-def test_never_delete_documents(repo):
+def test_documents_must_be_trashed_before_permanent_delete(repo):
     doc = make_doc(repo)
-    with pytest.raises(Exception, match="nur archiviert"):
+    with pytest.raises(Exception, match="zuerst in den Papierkorb"):
         repo.v.execute("DELETE FROM document WHERE id = ?", (doc,))
+
+
+def test_trash_list_restores_the_original_archive_state(repo):
+    active = make_doc(repo, data=b"\x89PNG\r\n\x1a\nactive")
+    archived = make_doc(repo, data=b"\x89PNG\r\n\x1a\narchived")
+    repo.archive_document(archived, "Vertrag beendet")
+
+    repo.trash_document(active)
+    repo.trash_document(archived)
+    assert repo.list_documents()["total"] == 0
+    assert repo.dashboard()["documents_total"] == 0
+    items = repo.list_documents(trash=True)["items"]
+    assert {item["id"] for item in items} == {active, archived}
+    assert all(item["deleted"] for item in items)
+    with pytest.raises(Exception, match="nicht gefunden"):
+        repo.get_document(active)
+
+    repo.restore_from_trash(active)
+    repo.restore_from_trash(archived)
+    assert repo.list_documents()["total"] == 1
+    assert repo.dashboard()["documents_total"] == 1
+    assert repo.list_documents(archived="nur")["items"][0]["id"] == archived
+    assert repo.get_document(archived)["archive_reason"] == "Vertrag beendet"
+
+
+def test_trashing_refuses_running_recognition(repo):
+    doc = make_doc(repo)
+    repo.v.execute(
+        "INSERT INTO job (document_id, kind, state, created_at, updated_at)"
+        " VALUES (?,'process','laeuft','2026-01-01','2026-01-01')",
+        (doc,),
+    )
+    with pytest.raises(Exception, match="Erkennung läuft noch"):
+        repo.trash_document(doc)
+    assert repo.list_documents()["total"] == 1
+
+
+def test_job_queue_skips_a_job_removed_before_it_starts(repo):
+    doc = make_doc(repo)
+    calls = []
+    queue = JobQueue(repo.v, lambda document_id: calls.append(document_id) or {})
+    job_id = queue.enqueue(doc)
+    pending = queue._next()
+    repo.v.execute("DELETE FROM job WHERE id = ?", (job_id,))
+
+    queue._process(pending)
+
+    assert calls == []
 
 
 def test_restore_discarded_import_queues_recognition(repo, tmp_path):

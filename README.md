@@ -4,7 +4,7 @@ Ein lokales Programm für Windows 11, das wichtige Dokumente (Versicherung, Kauf
 
 - **Strikt lokal:** keine Cloud, kein Konto, kein KI-Dienst im Internet. Die Texterkennung läuft auf deinem Computer. Nur die Suche nach Updates fragt auf Wunsch die öffentliche Release-Liste bei GitHub ab (ohne Daten aus dem Archiv).
 - **Eine Datei:** das ganze Archiv (Originale, Texte, Vorschaubilder, Daten) liegt verschlüsselt in `archiv.syd`. Für eine Sicherung bei laufendem Programm **Einstellungen → Sicherung und Speicher → Jetzt sichern** verwenden. Die geöffnete Archivdatei nicht direkt kopieren: Dabei können aktuelle Änderungen fehlen. Alternativ das Programm vollständig beenden und erst dann die Archivdatei kopieren.
-- **Nie löschen, nur archivieren.**
+- **Papierkorb:** Löschen verschiebt Dokumente zunächst in den Papierkorb. Wiederherstellen und endgültiges Löschen sind dort getrennte Schritte; frühere Sicherungen können weiterhin Kopien enthalten.
 - **Deutsch**, dunkle Oberfläche, für Laien gemacht.
 
 ## Für Anwender

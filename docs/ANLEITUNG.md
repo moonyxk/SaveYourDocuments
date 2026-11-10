@@ -33,17 +33,17 @@ Ein Assistent richtet dein Archiv ein.
 3. **Prüfen:** Du siehst das Original neben den erkannten Angaben. Orange umrandete Felder sind unsicher. Korrigiere, was nicht stimmt, und bestätige. Erst bestätigte Dokumente zählen in Auswertungen und lösen Erinnerungen aus.
 4. Ist eine Firma neu, fragt das Programm nach. Sieht eine Firma einer bekannten ähnlich, kannst du sie zusammenführen oder getrennt lassen.
 
-Das Original bleibt immer unverändert gespeichert.
+Solange ein Dokument im Archiv ist, bleibt sein Original unverändert gespeichert.
 
 ## Alltag
 
 - **Start:** Was heute zu tun ist, was bald fällig wird und Warnungen.
-- **Dokumente:** Suche nach Firma, Betrag oder Stichwort; Filter, Tags, Archiv. „Bezahlt“ lässt sich markieren.
+- **Dokumente:** Suche nach Firma, Betrag oder Stichwort; Filter, Tags, Archiv und Papierkorb. „Bezahlt“ lässt sich markieren.
 - **Fristen:** Zahlungen und Kündigungen als Zeitleiste. Erinnerungen erscheinen als Windows-Benachrichtigung, standardmäßig Zahlung 7 und 1 Tag vorher, Kündigung 30 und 7 Tage vorher. Sich wiederholende Fristen entstehen automatisch neu.
 - **Auswertung:** Ausgaben pro Firma, Bereich und Jahr. Nur Euro, nur geprüfte Dokumente. CSV-Export ist möglich.
 - **Exportieren:** Dokumente in eine echte Ordnerstruktur kopieren (nach einer Vorlage) oder als ZIP laden. **Exportierte Dateien sind nicht verschlüsselt.**
 
-Dokumente werden **nie gelöscht**, nur archiviert.
+**In den Papierkorb verschieben:** Ein Dokument verschwindet aus der normalen Liste, Fristen und Auswertungen. Du kannst es im Papierkorb wiederherstellen oder dort endgültig löschen. Beim endgültigen Löschen werden seine Inhalte unwiderruflich aus dem geöffneten Archiv entfernt. Frühere Sicherungen können weiterhin Kopien enthalten; die Archivdatei wird dadurch nicht unbedingt kleiner.
 
 ## Sichern und Wiederherstellen
 

@@ -1,7 +1,7 @@
 """Dienstschicht ueber dem Vault: Einstellungen, Firmen, Bereiche, Tags, Dokumente.
 
 Fachregeln (PLAN.md): nur `geprueft` zaehlt fuer Auswertungen und Erinnerungen, Korrekturen
-landen als Alt/Neu in `field_history`, Dokumente werden nie geloescht.
+landen als Alt/Neu in `field_history`; endgueltiges Loeschen ist nur aus dem Papierkorb moeglich.
 """
 
 from __future__ import annotations
@@ -102,7 +102,8 @@ EDITABLE_FIELDS = {
 
 DOC_COLUMNS = (
     "d.id, d.sha256, d.original_name, d.mime, d.pages, d.imported_at, d.state, d.archived,"
-    " d.archive_reason, d.doc_type, d.company_id, d.category_id, d.doc_date, d.amount_cents,"
+    " d.archive_reason, d.deleted, d.deleted_at, d.doc_type, d.company_id, d.category_id,"
+    " d.doc_date, d.amount_cents,"
     " d.currency, d.paid, d.paid_at, d.note, d.reviewed_at, d.batch_id, d.ocr_confidence,"
     " c.name AS company_name, cat.name AS category_name"
 )
@@ -472,7 +473,9 @@ class Repo:
     # ------------------------------------------------------------------ Dokumente
 
     def _doc_row(self, document_id: int) -> dict:
-        row = self.v.row(f"SELECT {DOC_COLUMNS}{DOC_FROM} WHERE d.id = ?", (document_id,))
+        row = self.v.row(
+            f"SELECT {DOC_COLUMNS}{DOC_FROM} WHERE d.id = ? AND d.deleted = 0", (document_id,)
+        )
         if not row:
             raise NotFoundError("Das Dokument")
         return row
@@ -516,6 +519,7 @@ class Repo:
         doc["display_name"] = self.display_name(doc)
         doc["paid"] = bool(doc["paid"])
         doc["archived"] = bool(doc["archived"])
+        doc["deleted"] = bool(doc["deleted"])
         doc["amount"] = format_eur(doc["amount_cents"])
         return doc
 
@@ -566,20 +570,25 @@ class Repo:
         paid: bool | None = None,
         state: str | None = None,
         archived: str = "nein",
+        trash: bool = False,
         sort: str = "datum_ab",
         limit: int = 50,
         offset: int = 0,
         after_id: int | None = None,
     ) -> dict:
         where, params = [], []
-        if archived == "nein":
-            where.append("d.archived = 0")
-        elif archived == "nur":
-            where.append("d.archived = 1")
-        elif archived != "ja":
+        if archived not in ("nein", "nur", "ja"):
             raise ArchiveError("Ungültiger Archivfilter.", "ungueltig")
+        if trash:
+            where.append("d.deleted = 1")
+        else:
+            where.append("d.deleted = 0")
+            if archived == "nein":
+                where.append("d.archived = 0")
+            elif archived == "nur":
+                where.append("d.archived = 1")
         if q and q.strip():
-            ids = self.v.search(q, include_archived=True)
+            ids = self.v.search(q, include_archived=True, include_deleted=trash)
             like = f"%{q.strip().lower()}%"
             amount_hint = re.sub(r"[^\d,]", "", q)
             clause = (
@@ -864,6 +873,64 @@ class Repo:
                     (document_id, now_iso(), now_iso()),
                 )
         return self.get_document(document_id)
+
+    def trash_document(self, document_id: int) -> None:
+        self._doc_row(document_id)
+        with self.v.tx():
+            if self.v.scalar(
+                "SELECT count(*) FROM job WHERE document_id = ? AND state = 'laeuft'",
+                (document_id,),
+            ):
+                raise ArchiveError(
+                    "Die Erkennung läuft noch. Verschiebe das Dokument danach in den Papierkorb.",
+                    "in_arbeit",
+                    409,
+                )
+            self.v.execute(
+                "DELETE FROM job WHERE document_id = ? AND state = 'wartend'", (document_id,)
+            )
+            try:
+                self.v.trash(document_id)
+            except ValueError as exc:
+                raise ArchiveError(
+                    "Das Dokument liegt bereits im Papierkorb.", "ungueltig", 409
+                ) from exc
+
+    def restore_from_trash(self, document_id: int) -> dict:
+        with self.v.tx():
+            row = self.v.row("SELECT state, deleted FROM document WHERE id = ?", (document_id,))
+            if not row:
+                raise NotFoundError("Das Dokument")
+            if not row["deleted"]:
+                raise ArchiveError("Das Dokument liegt nicht im Papierkorb.", "ungueltig", 409)
+            self.v.restore_from_trash(document_id)
+            if row["state"] == "eingegangen" and not self.v.scalar(
+                "SELECT count(*) FROM job WHERE document_id = ? AND state IN ('wartend','laeuft')",
+                (document_id,),
+            ):
+                self.v.execute(
+                    "INSERT INTO job (document_id, kind, state, created_at, updated_at)"
+                    " VALUES (?,'process','wartend',?,?)",
+                    (document_id, now_iso(), now_iso()),
+                )
+        return self.get_document(document_id)
+
+    def purge_document(self, document_id: int) -> bool:
+        row = self.v.row("SELECT deleted FROM document WHERE id = ?", (document_id,))
+        if not row:
+            raise NotFoundError("Das Dokument")
+        if not row["deleted"]:
+            raise ArchiveError(
+                "Verschiebe das Dokument zuerst in den Papierkorb.", "nicht_im_papierkorb", 409
+            )
+        try:
+            return self.v.purge(document_id)
+        except ValueError as exc:
+            raise ArchiveError(
+                "Die Erkennung läuft noch. Lösche das Dokument danach endgültig.",
+                "in_arbeit",
+                409,
+            ) from exc
 
     def set_paid(self, document_id: int, paid: bool, paid_at: str | None = None) -> dict:
         from .deadlines import Deadlines

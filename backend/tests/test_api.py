@@ -457,6 +457,61 @@ def test_update_check_endpoints(tmp_path, monkeypatch):
         assert opened == [url]
 
 
+def test_document_trash_restore_and_permanent_delete(tmp_path):
+    client, state = make(tmp_path)
+    with client as c:
+        setup_key(c)
+        document_id, _ = state.vault.add_document(
+            "vertrag.pdf", "application/pdf", [b"private document bytes"]
+        )
+        state.vault.index_text(document_id, 1, "private searchable text")
+        state.jobs.enqueue(document_id)
+
+        assert c.get("/api/documents", headers=H).json()["total"] == 1
+        assert c.delete(f"/api/documents/{document_id}", headers=H).status_code == 409
+        moved = c.post(f"/api/documents/{document_id}/trash", headers=H)
+        assert moved.status_code == 200 and moved.json()["trashed"] is True
+        assert (
+            state.vault.scalar("SELECT count(*) FROM job WHERE document_id = ?", (document_id,))
+            == 0
+        )
+        assert c.get("/api/documents", headers=H).json()["total"] == 0
+
+        trashed = c.get("/api/documents", params={"trash": True}, headers=H).json()
+        assert trashed["total"] == 1
+        assert trashed["items"][0]["id"] == document_id
+        assert trashed["items"][0]["deleted"] is True
+        assert trashed["items"][0]["archived"] is True
+        assert c.get(f"/api/documents/{document_id}", headers=H).status_code == 404
+        assert c.get(f"/api/documents/{document_id}/parts/1/file", headers=H).status_code == 404
+        assert (
+            c.get(
+                "/api/documents", params={"trash": True, "q": "private searchable"}, headers=H
+            ).json()["total"]
+            == 1
+        )
+
+        restored = c.post(f"/api/documents/{document_id}/restore-from-trash", headers=H)
+        assert restored.status_code == 200
+        assert restored.json()["deleted"] is False
+        assert restored.json()["archived"] is False
+        assert c.get("/api/documents", headers=H).json()["total"] == 1
+
+        c.post(f"/api/documents/{document_id}/trash", headers=H)
+        purged = c.delete(f"/api/documents/{document_id}", headers=H)
+        assert purged.status_code == 200
+        assert purged.json() == {"deleted": True, "cleaned": True}
+        assert state.vault.scalar("SELECT count(*) FROM document WHERE id = ?", (document_id,)) == 0
+        assert c.get("/api/documents", params={"trash": True}, headers=H).json()["total"] == 0
+        assert (
+            state.vault.scalar(
+                "SELECT count(*) FROM audit_log WHERE document_id = ? AND event = 'document.purged'",
+                (document_id,),
+            )
+            == 1
+        )
+
+
 def test_update_channel_is_saved_and_cached_separately(tmp_path, monkeypatch):
     from syd import updates
 

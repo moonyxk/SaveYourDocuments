@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, errorText, type Json } from "../../lib/api";
-import { date, eur } from "../../lib/format";
+import { date, dateTime, eur } from "../../lib/format";
 import { useNav } from "../../lib/nav";
-import { Empty, ErrorBox, Icon, Modal, PageHead, Spinner, useUi } from "../ui";
+import { Badge, Empty, ErrorBox, Icon, Modal, PageHead, Spinner, useUi } from "../ui";
 import {
   StatusBadges,
   TagBadge,
@@ -30,6 +30,7 @@ export default function DocumentsView() {
     ...EMPTY_FILTERS,
     q: params.q ?? "",
     archived: params.archived ?? "nein",
+    trash: params.trash ?? false,
   }));
   const [qText, setQText] = useState(params.q ?? "");
   const [offset, setOffset] = useState(0);
@@ -47,8 +48,13 @@ export default function DocumentsView() {
 
   // Suche aus der Kopfzeile oder Verweis von anderen Ansichten
   useEffect(() => {
-    if (params.q === undefined && params.archived === undefined) return;
-    setFilters((f) => ({ ...f, q: params.q ?? f.q, archived: params.archived ?? f.archived }));
+    if (params.q === undefined && params.archived === undefined && params.trash === undefined) return;
+    setFilters((f) => ({
+      ...f,
+      q: params.q ?? f.q,
+      archived: params.archived ?? f.archived,
+      trash: params.trash ?? f.trash,
+    }));
     if (params.q !== undefined) setQText(params.q);
     setOffset(0);
     setSelected(new Set());
@@ -71,7 +77,15 @@ export default function DocumentsView() {
   );
 
   const { value: fv, errors } = buildFilter(filters);
-  const apiParams = { ...fv, state: filters.state, archived: filters.archived, sort: filters.sort, limit, offset };
+  const apiParams = {
+    ...fv,
+    state: filters.state,
+    archived: filters.archived,
+    trash: filters.trash,
+    sort: filters.sort,
+    limit,
+    offset,
+  };
   const list = useQuery({
     queryKey: ["documents", apiParams],
     queryFn: () => api.get<{ items: Json[]; total: number }>("/api/documents", apiParams),
@@ -87,15 +101,19 @@ export default function DocumentsView() {
 
   if (params.doc) return <DocumentDetail id={params.doc} onBack={() => go("docs", {})} />;
 
-  const chips = activeFilters(filters, lookups, true);
+  const chips = activeFilters(filters, lookups, !filters.trash);
   const hasFilters = chips.length > 0;
   const filterCount = chips.filter((c) => c.key !== "q").length;
   const resetAll = () => {
     setQText("");
-    change({ ...EMPTY_FILTERS, sort: filters.sort });
+    change({ ...EMPTY_FILTERS, sort: filters.sort, trash: filters.trash });
   };
 
   const open = (id: number) => go("docs", { doc: id });
+  const toggleTrash = () => {
+    setQText("");
+    change({ ...EMPTY_FILTERS, sort: filters.sort, trash: !filters.trash });
+  };
   const allSelected = items.length > 0 && items.every((d) => selected.has(d.id));
   const toggle = (id: number) =>
     setSelected((s) => {
@@ -110,24 +128,97 @@ export default function DocumentsView() {
   const sortMark = (a: string, b: string) => (filters.sort === a ? " ↓" : filters.sort === b ? " ↑" : "");
   const ariaSort = (a: string, b: string) => (filters.sort === a ? "descending" : filters.sort === b ? "ascending" : "none");
 
-  const restoreSelected = async () => {
-    const ok = await confirm({
-      title: chosen.length === 1 ? "Dokument wiederherstellen?" : `${chosen.length} Dokumente wiederherstellen?`,
-      text: "Sie erscheinen danach wieder in der normalen Liste.",
-      confirmLabel: "Wiederherstellen",
-    });
-    if (!ok) return;
+  const restoreDocuments = async (documents: Json[], ask = true) => {
+    if (!documents.length) return;
+    if (ask) {
+      const ok = await confirm({
+        title: documents.length === 1 ? "Dokument wiederherstellen?" : `${documents.length} Dokumente wiederherstellen?`,
+        text: filters.trash
+          ? "Die Dokumente verlassen den Papierkorb und kehren in ihren vorherigen Zustand zurück."
+          : "Sie erscheinen danach wieder in der normalen Liste.",
+        confirmLabel: "Wiederherstellen",
+      });
+      if (!ok) return;
+    }
     let failed = 0;
-    for (const d of chosen.filter((x) => x.archived)) {
+    let firstFailure: unknown;
+    for (const d of documents) {
       try {
-        await api.post(`/api/documents/${d.id}/restore`);
-      } catch {
+        await api.post(`/api/documents/${d.id}/${filters.trash ? "restore-from-trash" : "restore"}`);
+      } catch (e) {
         failed++;
+        firstFailure ??= e;
       }
     }
     setSelected(new Set());
-    void qc.invalidateQueries({ queryKey: ["documents"] });
-    toast(failed ? `${failed} Dokumente konnten nicht wiederhergestellt werden.` : "Wiederhergestellt.", failed ? "bad" : "ok");
+    void qc.invalidateQueries();
+    toast(
+      failed
+        ? `${failed === 1 ? "1 Dokument konnte" : `${failed} Dokumente konnten`} nicht wiederhergestellt werden. ${errorText(firstFailure)}`
+        : "Wiederhergestellt.",
+      failed ? "bad" : "ok",
+    );
+  };
+
+  const trashSelected = async () => {
+    if (!chosen.length) return;
+    const ok = await confirm({
+      title: chosen.length === 1 ? "In den Papierkorb verschieben?" : `${chosen.length} Dokumente in den Papierkorb verschieben?`,
+      text: "Die Dokumente verschwinden aus der normalen Liste, Fristen und Auswertungen. Du kannst sie aus dem Papierkorb wiederherstellen.",
+      confirmLabel: "In Papierkorb verschieben",
+    });
+    if (!ok) return;
+    let failed = 0;
+    let firstFailure: unknown;
+    for (const d of chosen) {
+      try {
+        await api.post(`/api/documents/${d.id}/trash`);
+      } catch (e) {
+        failed++;
+        firstFailure ??= e;
+      }
+    }
+    setSelected(new Set());
+    void qc.invalidateQueries();
+    toast(
+      failed
+        ? `${failed === 1 ? "1 Dokument konnte" : `${failed} Dokumente konnten`} nicht verschoben werden. ${errorText(firstFailure)}`
+        : "In den Papierkorb verschoben.",
+      failed ? "bad" : "ok",
+    );
+  };
+
+  const purgeDocuments = async (documents: Json[]) => {
+    if (!documents.length) return;
+    const ok = await confirm({
+      title: documents.length === 1 ? "Dokument endgültig löschen?" : `${documents.length} Dokumente endgültig löschen?`,
+      text: `${documents.length === 1 ? "Das Dokument wird" : "Die Dokumente werden"} unwiderruflich aus dem verschlüsselten Archiv entfernt. Frühere Sicherungen können weiterhin Kopien enthalten; die Archivdatei wird dadurch nicht unbedingt kleiner.`,
+      confirmLabel: "Endgültig löschen",
+      danger: true,
+    });
+    if (!ok) return;
+    let failed = 0;
+    let cleanupPending = 0;
+    let firstFailure: unknown;
+    for (const d of documents) {
+      try {
+        const result = await api.del<{ cleaned: boolean }>(`/api/documents/${d.id}`);
+        if (!result.cleaned) cleanupPending++;
+      } catch (e) {
+        failed++;
+        firstFailure ??= e;
+      }
+    }
+    setSelected(new Set());
+    void qc.invalidateQueries();
+    toast(
+      failed
+        ? `${failed === 1 ? "1 Dokument konnte" : `${failed} Dokumente konnten`} nicht endgültig gelöscht werden. ${errorText(firstFailure)}`
+        : cleanupPending
+          ? "Dokument endgültig gelöscht. Die Archivdatei konnte nicht vollständig bereinigt werden; bitte schließe das Programm und starte es erneut."
+          : "Endgültig gelöscht.",
+      failed || cleanupPending ? "bad" : "ok",
+    );
   };
 
   const from = total ? offset + 1 : 0;
@@ -136,12 +227,25 @@ export default function DocumentsView() {
   return (
     <>
       <PageHead
-        title="Alle Dokumente"
-        lead={list.data ? (total === 1 ? "1 Dokument" : `${total} Dokumente`) + (hasFilters ? " passen zu deiner Auswahl." : " im Archiv.") : "Dokumente werden geladen …"}
+        title={filters.trash ? "Papierkorb" : "Alle Dokumente"}
+        lead={
+          list.data
+            ? filters.trash
+              ? `${total === 1 ? "1 Dokument liegt" : `${total} Dokumente liegen`} im Papierkorb. Du kannst sie wiederherstellen oder endgültig löschen.`
+              : (total === 1 ? "1 Dokument" : `${total} Dokumente`) + (hasFilters ? " passen zu deiner Auswahl." : " im Archiv.")
+            : "Dokumente werden geladen …"
+        }
         actions={
-          <button className="btn secondary" onClick={() => setManager(true)}>
-            Firmen, Bereiche und Tags verwalten
-          </button>
+          <>
+            {filters.trash ? (
+              <button className="btn secondary" onClick={toggleTrash}>
+                Alle Dokumente
+              </button>
+            ) : null}
+            <button className="btn secondary" onClick={() => setManager(true)}>
+              Firmen, Bereiche und Tags verwalten
+            </button>
+          </>
         }
       />
 
@@ -185,28 +289,42 @@ export default function DocumentsView() {
 
       {panel ? (
         <div id="docs-filter">
-          <FilterPanel filters={filters} change={change} errors={errors} extended docTypes={meta.data?.doc_types ?? []} lookups={lookups} />
+          <FilterPanel
+            filters={filters}
+            change={change}
+            errors={errors}
+            extended={!filters.trash}
+            docTypes={meta.data?.doc_types ?? []}
+            lookups={lookups}
+          />
         </div>
       ) : null}
 
       <div className="chips" role="group" aria-label="Schnellfilter">
-        <button className="chip" aria-pressed={filters.paid === "nein"} onClick={() => change({ paid: filters.paid === "nein" ? "" : "nein" })}>
-          Offen
+        {!filters.trash ? (
+          <>
+            <button className="chip" aria-pressed={filters.paid === "nein"} onClick={() => change({ paid: filters.paid === "nein" ? "" : "nein" })}>
+              Offen
+            </button>
+            <button className="chip" aria-pressed={filters.paid === "ja"} onClick={() => change({ paid: filters.paid === "ja" ? "" : "ja" })}>
+              Bezahlt
+            </button>
+            <button className="chip" aria-pressed={filters.state === "erkannt"} onClick={() => change({ state: filters.state === "erkannt" ? "" : "erkannt" })}>
+              Zu prüfen
+            </button>
+            <button
+              className="chip"
+              aria-pressed={filters.archived === "nur"}
+              onClick={() => change({ archived: filters.archived === "nur" ? "nein" : "nur" })}
+            >
+              Archiv
+            </button>
+          </>
+        ) : null}
+        <button className="chip" aria-pressed={filters.trash} onClick={toggleTrash}>
+          Papierkorb
         </button>
-        <button className="chip" aria-pressed={filters.paid === "ja"} onClick={() => change({ paid: filters.paid === "ja" ? "" : "ja" })}>
-          Bezahlt
-        </button>
-        <button className="chip" aria-pressed={filters.state === "erkannt"} onClick={() => change({ state: filters.state === "erkannt" ? "" : "erkannt" })}>
-          Zu prüfen
-        </button>
-        <button
-          className="chip"
-          aria-pressed={filters.archived === "nur"}
-          onClick={() => change({ archived: filters.archived === "nur" ? "nein" : "nur" })}
-        >
-          Archiv
-        </button>
-        {(tags.data ?? []).slice(0, 6).map((t) => (
+        {!filters.trash ? (tags.data ?? []).slice(0, 6).map((t) => (
           <button
             key={t.id}
             className="chip"
@@ -218,7 +336,7 @@ export default function DocumentsView() {
               {t.name}
             </span>
           </button>
-        ))}
+        )) : null}
       </div>
 
       {hasFilters ? (
@@ -247,16 +365,33 @@ export default function DocumentsView() {
       {selected.size ? (
         <div className="dx-bulk" role="region" aria-label="Auswahl">
           <strong>{selected.size === 1 ? "1 Dokument ausgewählt" : `${selected.size} Dokumente ausgewählt`}</strong>
-          <button className="btn secondary small" onClick={() => setBulk("tag")}>
-            Tag hinzufügen
-          </button>
-          {chosen.some((d) => !d.archived) ? (
+          {!filters.trash ? (
+            <button className="btn secondary small" onClick={() => setBulk("tag")}>
+              Tag hinzufügen
+            </button>
+          ) : null}
+          {filters.trash ? (
+            <>
+              <button className="btn secondary small" onClick={() => void restoreDocuments(chosen)}>
+                Wiederherstellen
+              </button>
+              <button className="btn danger small" onClick={() => void purgeDocuments(chosen)}>
+                Endgültig löschen
+              </button>
+            </>
+          ) : null}
+          {!filters.trash ? (
+            <button className="btn secondary small" onClick={() => void trashSelected()}>
+              In Papierkorb verschieben
+            </button>
+          ) : null}
+          {!filters.trash && chosen.some((d) => !d.archived) ? (
             <button className="btn secondary small" onClick={() => setBulk("archive")}>
               Archivieren
             </button>
           ) : null}
-          {chosen.some((d) => d.archived) ? (
-            <button className="btn secondary small" onClick={() => void restoreSelected()}>
+          {!filters.trash && chosen.some((d) => d.archived) ? (
+            <button className="btn secondary small" onClick={() => void restoreDocuments(chosen.filter((d) => d.archived))}>
               Wiederherstellen
             </button>
           ) : null}
@@ -275,7 +410,7 @@ export default function DocumentsView() {
           {items.length ? (
             <table className="tbl">
               <caption className="sr">
-                Dokumente, {from} bis {to} von {total}
+                {filters.trash ? "Papierkorb" : "Dokumente"}, {from} bis {to} von {total}
               </caption>
               <thead>
                 <tr>
@@ -284,7 +419,7 @@ export default function DocumentsView() {
                       <input
                         type="checkbox"
                         className="dx-check"
-                        aria-label="Alle Dokumente auf dieser Seite auswählen"
+                        aria-label={`Alle Dokumente im ${filters.trash ? "Papierkorb" : "Archiv"} auf dieser Seite auswählen`}
                         checked={allSelected}
                         onChange={() => setSelected(allSelected ? new Set() : new Set(items.map((d) => d.id)))}
                       />
@@ -303,11 +438,17 @@ export default function DocumentsView() {
                     </button>
                   </th>
                   <th scope="col">Status</th>
+                  {filters.trash ? <th scope="col">Aktionen</th> : null}
                 </tr>
               </thead>
               <tbody>
                 {items.map((d) => (
-                  <tr key={d.id} className="click" onClick={() => open(d.id)} aria-selected={selected.has(d.id)}>
+                  <tr
+                    key={d.id}
+                    className={filters.trash ? undefined : "click"}
+                    onClick={filters.trash ? undefined : () => open(d.id)}
+                    aria-selected={selected.has(d.id)}
+                  >
                     <td className="dx-checkcell" onClick={(e) => e.stopPropagation()}>
                       <label>
                         <input
@@ -320,10 +461,15 @@ export default function DocumentsView() {
                       </label>
                     </td>
                     <td>
-                      <button className="dx-link" onClick={() => open(d.id)}>
-                        {d.display_name}
-                      </button>
+                      {filters.trash ? (
+                        <strong>{d.display_name}</strong>
+                      ) : (
+                        <button className="dx-link" onClick={() => open(d.id)}>
+                          {d.display_name}
+                        </button>
+                      )}
                       <div className="muted" style={{ fontSize: "0.8125rem" }}>
+                        {filters.trash && d.deleted_at ? `Im Papierkorb seit ${dateTime(d.deleted_at)} · ` : ""}
                         {[d.doc_type, d.company_name].filter(Boolean).join(" · ") || "Noch nicht erkannt"}
                       </div>
                       {d.tags?.length ? (
@@ -342,8 +488,30 @@ export default function DocumentsView() {
                       {eur(d.amount_cents)}
                     </td>
                     <td>
-                      <StatusBadges doc={d} deadline={deadlines.data?.get(d.id)} />
+                      {filters.trash ? (
+                        <Badge tone="gray">Papierkorb</Badge>
+                      ) : (
+                        <StatusBadges doc={d} deadline={deadlines.data?.get(d.id)} />
+                      )}
                     </td>
+                    {filters.trash ? (
+                      <td>
+                        <div className="row wrap">
+                          <button
+                            className="btn secondary small"
+                            onClick={() => void restoreDocuments([d])}
+                          >
+                            Wiederherstellen
+                          </button>
+                          <button
+                            className="btn danger small"
+                            onClick={() => void purgeDocuments([d])}
+                          >
+                            Endgültig löschen
+                          </button>
+                        </div>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -357,18 +525,26 @@ export default function DocumentsView() {
                 </button>
               }
             >
-              Probiere einen anderen Suchbegriff oder nimm einen Filter heraus.
+              {filters.trash
+                ? "Kein Dokument im Papierkorb passt zu deiner Suche oder den Filtern."
+                : "Probiere einen anderen Suchbegriff oder nimm einen Filter heraus."}
             </Empty>
           ) : (
             <Empty
-              title="Hier ist noch nichts."
+              title={filters.trash ? "Papierkorb ist leer." : "Hier ist noch nichts."}
               action={
-                <button className="btn primary" onClick={() => go("import")}>
-                  Fotos sortieren
-                </button>
+                filters.trash ? (
+                  <button className="btn secondary" onClick={toggleTrash}>
+                    Alle Dokumente anzeigen
+                  </button>
+                ) : (
+                  <button className="btn primary" onClick={() => go("import")}>
+                    Fotos sortieren
+                  </button>
+                )
               }
             >
-              Sobald du Fotos oder Scans importierst und prüfst, erscheinen sie hier.
+              {filters.trash ? "Dokumente im Papierkorb bleiben hier, bis du sie wiederherstellst oder endgültig löschst." : "Sobald du Fotos oder Scans importierst und prüfst, erscheinen sie hier."}
             </Empty>
           )}
         </div>

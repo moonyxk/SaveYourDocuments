@@ -21,7 +21,7 @@ Ein lokales Programm, das dauerhaft im Hintergrund laeuft, Fotos/Scans wichtiger
 - **Erinnerungen:** Zahlungsfristen und Kuendigungs-/Vertragsfristen. Standard-Vorlauf: Zahlung 7 und 1 Tag vorher, Kuendigung 30 und 7 Tage vorher, pro Dokument aenderbar. Sich wiederholende Fristen (z.B. jaehrliche Vertragsverlaengerung) entstehen automatisch neu
 - **Auswertungen:** Summen pro Firma, Jahr, Bereich. Nur Euro. Darstellung als Tabelle und Diagramme in der Oberflaeche, Schwerpunkt auf schoenem UI (Nils: "halb, auch"). CSV-Export nur als Nebenfunktion
 - **Ordner:** intern frei organisiert, **Export in echte Ordnerstruktur ueber frei konfigurierbare Vorlage**
-- **Nie loeschen, nur archivieren**
+- **Papierkorb:** Dokumente zuerst verschiebbar und wiederherstellbar; endgültiges Löschen nur nach separater Bestätigung
 - **Alles in einer verschluesselten Datei**, Groesse egal. Die Datei ist als Ganzes kopierbar (USB-Stick nur optional, einfach bei der einen Datei bleiben, siehe 3.2). Passwortschutz nur optional vom Nutzer aktivierbar
 - **Schoenes, benutzerfreundliches UI** (Nils: wichtig, auch fuer Laien), komplett auf Deutsch (siehe 4.8)
 - **Strikt lokal**, kein Cloud-LLM, nur Windows 11, nur Deutsch (Oberflaeche und Dokumente)
@@ -58,7 +58,7 @@ Privat, zunaechst Nils, Familie und Freunde. Jeder hat eine eigene Installation 
 | D5 | Erkennung strikt lokal (kein Cloud-LLM). Zwei Stufen: OCR + Regeln als Basis, lokales Modell (z.B. via Ollama) zuschaltbar mit Mindestanforderung. Provider-Schnittstelle bleibt austauschbar | Offen bis Spike S3 |
 | D6 | Frontend: React + TypeScript + Vite + Tailwind CSS mit den Tokens aus DESIGN.md | Gesetzt |
 | D7 | Handy-Eingang: LocalSend-Protokoll v2 als Empfaenger **in Python selbst implementieren**. Alternative: fertiges Go-CLI als zweiter Sidecar | Eigenimplementierung steht (backend/syd/localsend.py), Test mit echter LocalSend-App und Windows-Firewall offen |
-| D8 | Loeschkonzept: kein Loeschen im Programm, nur Status `archiviert` (ausgeblendet, wiederherstellbar) | Gesetzt, Randfaelle siehe 7 |
+| D8 | Loeschkonzept: Papierkorb mit Wiederherstellung und getrenntem endgültigem Löschen | Nach Nutzerfeedback umgesetzt; Sicherungskopien können gelöschte Dokumente weiterhin enthalten |
 | D9 | Hintergrundbetrieb: Prozess lebt mit dem Tray, Fenster schliessen beendet nicht, Beenden nur ueber Tray-Menue | Gesetzt, Umsetzung in S1 pruefen |
 | D10 | Log nur mit IDs und Ereignistypen, keine Inhalte. Alt/Neu-Werte von Korrekturen liegen in der verschluesselten Datenbank (Feldhistorie), nicht im Log | Gesetzt (Nils bestaetigt, 4.7) |
 | D11 | UI: DESIGN.md von Nils (dunkles BI-Designsystem) als Grundlage, Anpassungen laut 4.8.1, Klickprototyp vor der Umsetzung (M0b) | Gesetzt, Prototyp liegt in prototype/index.html, Abnahme durch Nils offen |
@@ -72,7 +72,7 @@ Entscheidung Nils: alles in einer Datei, Groesse egal. Randbedingungen:
 - Stueckweiser Zugriff (inkrementeller BLOB-I/O), kein vollstaendiges Laden in den Arbeitsspeicher. `sqlcipher3` nennt diese Funktion in seiner README, in S2 pruefen.
 - Backup ueber die SQLite-Backup-Funktion, nicht durch Kopieren der laufenden Datei.
 - Seitengroesse: SQLite-Dokumentation empfiehlt 8192 oder 16384 fuer grosse BLOBs, Vertraeglichkeit mit SQLCipher in S2 pruefen.
-- "Nie loeschen" heisst: die Datei waechst nur, VACUUM kaum noetig. Speicherplatzanzeige und Warnung einplanen.
+- Dokumente bleiben im Papierkorb erhalten, bis sie wiederhergestellt oder endgültig gelöscht werden. Frühere Sicherungen sind davon nicht betroffen.
 - Hash-Dedup (SHA-256 als Spalte) bleibt.
 - Export als Ordnerstruktur/ZIP bleibt (4.6).
 - Risiko: eine beschaedigte Datei bedeutet Totalverlust. Gegenmassnahmen: Integritaetspruefung beim Start, automatische rotierende Sicherungskopie, Hinweis auf externes Backup, Wiederherstellungsschluessel.
@@ -238,14 +238,14 @@ Kennungen, die erkannt und normalisiert gespeichert werden: Aktenzeichen, Kunden
 
 Dokumentmenge pro Jahr: unbekannt (Nils). Planung daher auf Obergrenze: 10.000 Dokumente muessen performant sein (M8).
 
-Rechenbeispiel (Annahmen, nicht gemessen): Handyfotos haben oft mehrere MB je Seite, scharfe Dokumentfotos sind mit deutlich weniger gut lesbar. Bei 1.000 Dokumenten mit je 2 Seiten und je 3 MB waeren das ca. 6 GB, bei 10.000 ca. 60 GB. Wegen "nie loeschen" und "eine Datei" waechst die Datei nur. Messung mit echten Scans in S2.
+Rechenbeispiel (Annahmen, nicht gemessen): Handyfotos haben oft mehrere MB je Seite, scharfe Dokumentfotos sind mit deutlich weniger gut lesbar. Bei 1.000 Dokumenten mit je 2 Seiten und je 3 MB waeren das ca. 6 GB, bei 10.000 ca. 60 GB. Papierkorb und Sicherungskopien koennen den Speicherbedarf erhoehen; endgültiges Löschen ist eine bewusste Aktion. Messung mit echten Scans in S2.
 
 Offene Funktionsentscheidung (Nils):
 - **A) Original unveraendert behalten** (Beweiswert, spaetere bessere OCR). Durchsuchbarkeit ueber den OCR-Text in der Datenbank, keine zweite PDF-Version noetig. Groesster Speicherbedarf.
 - **B) Original behalten, optional "Platz sparen"** als Einstellung (verkleinert/ neu komprimiert, Standard aus).
 - **C) Beim Import verkleinern, Original verwerfen.** Kleinste Datei, aber das unveraenderte Original ist weg.
 
-Meine Empfehlung: B mit Standard "Original unveraendert", weil dies "nie loeschen" respektiert und die Entscheidung spaeter zulaesst.
+Meine Empfehlung: B mit Standard "Original unveraendert", weil dies die Originaldatei bewahrt; ein Dokument kann spaeter bewusst in den Papierkorb verschoben werden.
 
 ## 5. Spikes (Meilenstein M0, zuerst, jeweils mit Abbruchkriterium)
 
@@ -318,7 +318,7 @@ Meine Empfehlung: B mit Standard "Original unveraendert", weil dies "nie loesche
 
 - Projektstruktur, Python-Version gepinnt (nach S1/S2), `uv`-Setup, Lint/Tests/CI
 - Schema + Migrationen, Repository, DocumentStore, Hash-Dedup
-- Archivierungslogik (nie loeschen), Audit-Log (Tagesdateien)
+- Archivierungs- und Papierkorblogik (endgültiges Löschen nur aus dem Papierkorb), Audit-Log (Tagesdateien)
 
 ### M2: Eingang
 
@@ -370,7 +370,7 @@ Meine Empfehlung: B mit Standard "Original unveraendert", weil dies "nie loesche
 | Schluesselverlust | Datenverlust | Wiederherstellungsschluessel exportierbar, Doku |
 | Dauerbetrieb: PC aus, App beendet | Keine Erinnerung, kein Empfang | Nachholen beim Start, Hinweis in der UI, Status im Tray |
 | LocalSend-Port offen im Netz | Fremde Geraete senden Dateien | Quarantaene, Annahme-Dialog, Vertrauensliste, PIN, Typ-/Groessenlimit |
-| "Nie loeschen": Fehlimporte, Testdaten, Dubletten bleiben | Archiv verschmutzt, Speicher waechst | Hash-Dedup, `archiviert` mit Grund, Entwicklungsmodus mit eigener Test-Datenbank |
+| Fehlimporte, Testdaten und Dubletten belegen Speicher | Archiv verschmutzt, Speicher waechst | Hash-Dedup, Papierkorb mit Wiederherstellung und bewusstem endgueltigem Loeschen |
 | Datenschutz bei Weitergabe an Familie/Freunde | Fremde Daten, wenn jemand Support braucht | Keine Telemetrie, kein Upload, Support nur mit Logs ohne Inhalte |
 | Unbekannte Hardware bei Familie/Freunden | Lokales Modell zu langsam | Zwei Stufen (Basis ohne Modell), Mindestanforderung, Messung in S3 |
 | Eine Datei beschaedigt oder verloren | Alle Dokumente weg | Integritaetspruefung, rotierende Sicherungskopien, Backup-Hinweis, Wiederherstellungsschluessel |
@@ -378,7 +378,7 @@ Meine Empfehlung: B mit Standard "Original unveraendert", weil dies "nie loesche
 | Nutzer legt die Datenbank auf einen USB-Stick und betreibt sie dort | Beschaedigte Datenbank, Totalverlust | Warnhinweis bei Wechseldatentraeger, Integritaetspruefung beim Start, rotierende lokale Sicherung, Stick nur fuer Kopien |
 | Schluessel an Windows-Konto gebunden: Windows-Neuinstallation oder anderer PC | Datei ohne Wiederherstellungsschluessel unlesbar | Wiederherstellungsschluessel Pflicht im Erststart-Assistenten, Passwort optional fuer portablen Betrieb |
 | UI-Aufwand unterschaetzt (hoher Anspruch) | Projekt zieht sich, UI bleibt unfertig | Klickprototyp M0b, Designsystem, UI frueh mit Testnutzern (Familie) pruefen |
-| Speicherbedarf unterschaetzt (Handyfotos unveraendert, nie loeschen, eine Datei) | Datei waechst auf zweistellige GB, Backups dauern lange | Entscheidung Originalformat (4.10), Speicherplatzanzeige, Warnung |
+| Speicherbedarf unterschaetzt (Handyfotos unveraendert, Einzeldateiarchiv und Sicherungskopien) | Datei waechst auf zweistellige GB, Backups dauern lange | Entscheidung Originalformat (4.10), Papierkorb und endgültiges Löschen, Speicherplatzanzeige, Warnung |
 | Scope Creep | Projekt wird nie fertig | Nicht-Ziele einhalten, Meilensteine mit Abnahmekriterien |
 
 ## 8. Offene Fragen an Nils

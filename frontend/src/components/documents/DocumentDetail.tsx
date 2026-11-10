@@ -12,7 +12,7 @@ import Viewer from "./Viewer";
 const PAYABLE = new Set(["Rechnung", "Beitragsrechnung", "Mahnung", "Jahresabrechnung", "Kaufbeleg"]);
 
 export default function DocumentDetail({ id, onBack }: { id: number; onBack: () => void }) {
-  const { toast } = useUi();
+  const { toast, confirm } = useUi();
   const { go } = useNav();
   const qc = useQueryClient();
   const meta = useMeta();
@@ -49,6 +49,15 @@ export default function DocumentDetail({ id, onBack }: { id: number; onBack: () 
     },
     onError: (e) => toast(errorText(e), "bad"),
   });
+  const trash = useMutation({
+    mutationFn: () => api.post(`/api/documents/${id}/trash`),
+    onSuccess: () => {
+      refresh();
+      toast("In den Papierkorb verschoben. Du kannst das Dokument dort wiederherstellen.");
+      onBack();
+    },
+    onError: (e) => toast(errorText(e), "bad"),
+  });
   const paid = useMutation({
     mutationFn: (v: { paid: boolean; paid_at?: string }) => api.post(`/api/documents/${id}/paid`, v),
     onSuccess: (_d, v) => {
@@ -69,6 +78,14 @@ export default function DocumentDetail({ id, onBack }: { id: number; onBack: () 
 
   const closeArchive = useCallback(() => setArchiving(false), []);
   const closePay = useCallback(() => setPaying(false), []);
+  const moveToTrash = async () => {
+    const ok = await confirm({
+      title: "Dokument in den Papierkorb verschieben?",
+      text: "Das Dokument verschwindet aus der normalen Liste, Fristen und Auswertungen. Du kannst es aus dem Papierkorb wiederherstellen.",
+      confirmLabel: "In Papierkorb verschieben",
+    });
+    if (ok) trash.mutate();
+  };
 
   if (q.isPending) return <Spinner />;
   if (q.isError)
@@ -114,6 +131,14 @@ export default function DocumentDetail({ id, onBack }: { id: number; onBack: () 
               Archivieren
             </button>
           )}
+          <button
+            className="btn ghost"
+            disabled={trash.isPending || d.job?.state === "laeuft"}
+            title={d.job?.state === "laeuft" ? "Warte, bis die Erkennung abgeschlossen ist." : undefined}
+            onClick={() => void moveToTrash()}
+          >
+            In Papierkorb verschieben
+          </button>
         </div>
       </div>
 

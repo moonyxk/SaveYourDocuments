@@ -347,6 +347,7 @@ def create_app(
         paid: bool | None = None,
         state_: str | None = Query(None, alias="state"),
         archived: str = "nein",
+        trash: bool = False,
         sort: str = "datum_ab",
         limit: int = Query(50, ge=1, le=500),
         offset: int = Query(0, ge=0),
@@ -355,8 +356,8 @@ def create_app(
         return state.repo.list_documents(
             q=q, company_id=company_id, doc_type=doc_type, category_id=category_id,
             date_from=date_from, date_to=date_to, amount_min=amount_min, amount_max=amount_max,
-            tag_ids=_ids(tag_ids), paid=paid, state=state_, archived=archived, sort=sort,
-            limit=limit, offset=offset, after_id=after_id,
+            tag_ids=_ids(tag_ids), paid=paid, state=state_, archived=archived, trash=trash,
+            sort=sort, limit=limit, offset=offset, after_id=after_id,
         )  # fmt: skip
 
     @app.post("/api/documents/confirm-batch")
@@ -413,6 +414,29 @@ def create_app(
         state.hub.publish("documents.changed", document_id=doc_id)
         return _detail(doc_id)
 
+    @app.post("/api/documents/{doc_id}/trash")
+    def trash_document(doc_id: int):
+        state.repo.trash_document(doc_id)
+        state.jobs.notify()
+        state.hub.publish("documents.changed", document_id=doc_id)
+        state.hub.publish("reminders.changed")
+        return {"trashed": True}
+
+    @app.post("/api/documents/{doc_id}/restore-from-trash")
+    def restore_from_trash(doc_id: int):
+        state.repo.restore_from_trash(doc_id)
+        state.jobs.notify()
+        state.hub.publish("documents.changed", document_id=doc_id)
+        state.hub.publish("reminders.changed")
+        return _detail(doc_id)
+
+    @app.delete("/api/documents/{doc_id}")
+    def purge_document(doc_id: int):
+        cleaned = state.repo.purge_document(doc_id)
+        state.hub.publish("documents.changed", document_id=doc_id)
+        state.hub.publish("reminders.changed")
+        return {"deleted": True, "cleaned": cleaned}
+
     @app.post("/api/documents/{doc_id}/paid")
     def set_paid(doc_id: int, body: dict = Body(...)):
         state.repo.set_paid(doc_id, bool(body.get("paid")), body.get("paid_at"))
@@ -450,6 +474,7 @@ def create_app(
 
     @app.get("/api/documents/{doc_id}/parts/{part}/file")
     def part_file(doc_id: int, part: int, download: bool = False):
+        state.repo.get_document(doc_id)
         row = state.vault.row(
             "SELECT mime, name, size FROM blob_store WHERE document_id = ? AND page = ?",
             (doc_id, part),
@@ -469,6 +494,7 @@ def create_app(
 
     @app.get("/api/documents/{doc_id}/thumbnails/{page}")
     def thumbnail(doc_id: int, page: int):
+        state.repo.get_document(doc_id)
         row = state.vault.row(
             "SELECT image FROM thumbnail WHERE document_id = ? AND page = ?", (doc_id, page)
         )

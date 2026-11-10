@@ -13,7 +13,7 @@ Entwicklungsumgebung: Linux (Codespace), Python 3.14, SQLCipher 4.12 (`sqlcipher
 | Rekey Schluessel <-> Passwort | bestanden. Es gilt immer nur ein Schluessel (der alte wird nach dem Rekey abgelehnt) |
 | Wiederherstellungsschluessel | 32 Byte, Base32 in 4er-Gruppen, Rundlauf getestet. Gilt nur im Schluesselmodus, nach Wechsel auf Passwort ist er ungueltig. Die UI muss nach jedem Wechsel zu Schluesselmodus einen neuen anzeigen |
 | Sicherung per Backup-Funktion | bestanden, Kopie oeffnet mit demselben Schluessel, Ueberschreiben wird abgelehnt |
-| Nie loeschen | Trigger blockieren `DELETE` auf `document` und `blob_store`, `audit_log` ist append-only |
+| Papierkorb und endgültiges Löschen | Trigger erlauben das endgültige Entfernen nur für zuvor in den Papierkorb verschobene Dokumente; `audit_log` bleibt append-only und speichert nur IDs und Ereignisse |
 | Audit-Log nur IDs | `audit()` akzeptiert nur Ganzzahl-IDs und Feldnamen `[a-z0-9_]`, getestet |
 | Seitengroesse | 8192 funktioniert, muss aber bei **jedem** Oeffnen gesetzt werden (SQLCipher speichert sie nicht) |
 

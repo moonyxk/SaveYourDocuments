@@ -9,6 +9,8 @@ export type NavParams = {
   doc?: number;
   /** Filter fuer "docs", z. B. nur Archiv */
   archived?: "nein" | "nur" | "ja";
+  /** Oeffnet den Papierkorb in "docs" */
+  trash?: boolean;
   /** Bereich in "settings" */
   tab?: string;
 };

@@ -1,7 +1,7 @@
 """Verschluesselte Einzeldatei-Ablage (SQLCipher + FTS5), siehe PLAN.md D3/D4 und 3.1/3.2.
 
-Alles (Metadaten, Volltext, Dokumentinhalte, Audit-Log) liegt in einer Datei.
-Es gibt absichtlich keine Funktion zum Loeschen von Dokumenten (D8), nur Archivieren.
+Alles (Metadaten, Volltext, Dokumentinhalte, Audit-Log) liegt in einer Datei. Dokumente
+koennen in den Papierkorb verschoben, wiederhergestellt oder dort endgueltig entfernt werden.
 """
 
 from __future__ import annotations
@@ -276,6 +276,33 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE document ADD COLUMN last_extraction_run TEXT;
     """,
+    """
+    ALTER TABLE document ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0,1));
+    ALTER TABLE document ADD COLUMN deleted_at TEXT;
+    ALTER TABLE document ADD COLUMN trash_was_archived INTEGER NOT NULL DEFAULT 0
+        CHECK (trash_was_archived IN (0,1));
+    DROP TRIGGER document_no_delete;
+    CREATE TRIGGER document_no_delete BEFORE DELETE ON document
+        WHEN OLD.deleted = 0
+        BEGIN SELECT RAISE(ABORT, 'Dokumente muessen zuerst in den Papierkorb'); END;
+    DROP TRIGGER blob_no_delete;
+    CREATE TRIGGER blob_no_delete BEFORE DELETE ON blob_store
+        WHEN NOT EXISTS (
+            SELECT 1 FROM document WHERE id = OLD.document_id AND deleted = 1
+        )
+        BEGIN SELECT RAISE(ABORT, 'Dateien koennen nur aus dem Papierkorb entfernt werden'); END;
+    DROP TRIGGER field_history_no_delete;
+    CREATE TRIGGER field_history_no_delete BEFORE DELETE ON field_history
+        WHEN NOT EXISTS (
+            SELECT 1 FROM document WHERE id = OLD.document_id AND deleted = 1
+        )
+        BEGIN SELECT RAISE(ABORT, 'Feldhistorie ist append-only'); END;
+    CREATE INDEX document_deleted ON document(deleted, deleted_at);
+    CREATE TABLE purged_document (
+        id INTEGER PRIMARY KEY,
+        purged_at TEXT NOT NULL
+    );
+    """,
 ]
 
 Key = bytes | str  # bytes: zufaelliger 32-Byte-Schluessel, str: Passwort
@@ -361,6 +388,7 @@ class Vault:
             conn.close()
             raise WrongKeyError("Schluessel falsch oder Datei beschaedigt") from exc
         conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA secure_delete = ON")
         conn.execute("PRAGMA journal_mode = WAL")
         vault = cls(conn, p, key)
         vault._migrate()
@@ -475,10 +503,18 @@ class Vault:
             ).fetchone()
             if row:
                 return row[0], True
-            cur = self._conn.execute(
-                "INSERT INTO document (sha256, original_name, mime, pages, imported_at, batch_id,"
-                " archived, archive_reason) VALUES (?,?,?,?,?,?,?,?)",
+            doc_id = (
+                max(
+                    self.scalar("SELECT COALESCE(MAX(id), 0) FROM document"),
+                    self.scalar("SELECT COALESCE(MAX(id), 0) FROM purged_document"),
+                )
+                + 1
+            )
+            self._conn.execute(
+                "INSERT INTO document (id, sha256, original_name, mime, pages, imported_at, batch_id,"
+                " archived, archive_reason) VALUES (?,?,?,?,?,?,?,?,?)",
                 (
+                    doc_id,
                     doc_hash,
                     original_name,
                     mime,
@@ -489,7 +525,6 @@ class Vault:
                     archive_reason,
                 ),
             )
-            doc_id = cur.lastrowid
             for n, (data, h, m, nm) in enumerate(
                 zip(pages, page_hashes, mimes, names, strict=True), start=1
             ):
@@ -528,7 +563,7 @@ class Vault:
     def get_document(self, document_id: int) -> dict:
         row = self.row(
             "SELECT id, sha256, original_name, mime, pages, imported_at, state, archived,"
-            " archive_reason FROM document WHERE id = ?",
+            " archive_reason, deleted, deleted_at FROM document WHERE id = ?",
             (document_id,),
         )
         if not row:
@@ -549,6 +584,87 @@ class Vault:
 
     def restore(self, document_id: int) -> None:
         self._set_archived(document_id, 0, None, "document.restored")
+
+    def trash(self, document_id: int) -> None:
+        with self.tx():
+            row = self.row("SELECT archived, deleted FROM document WHERE id = ?", (document_id,))
+            if not row:
+                raise KeyError(document_id)
+            if row["deleted"]:
+                raise ValueError("Dokument liegt bereits im Papierkorb")
+            self.execute(
+                "UPDATE document SET deleted = 1, deleted_at = ?, trash_was_archived = ?,"
+                " archived = 1 WHERE id = ?",
+                (_now(), row["archived"], document_id),
+            )
+            self._audit("document.trashed", document_id=document_id)
+
+    def restore_from_trash(self, document_id: int) -> None:
+        with self.tx():
+            row = self.row(
+                "SELECT trash_was_archived, deleted FROM document WHERE id = ?", (document_id,)
+            )
+            if not row:
+                raise KeyError(document_id)
+            if not row["deleted"]:
+                raise ValueError("Dokument liegt nicht im Papierkorb")
+            self.execute(
+                "UPDATE document SET deleted = 0, deleted_at = NULL, archived = ?,"
+                " trash_was_archived = 0 WHERE id = ?",
+                (row["trash_was_archived"], document_id),
+            )
+            self._audit("document.restored_from_trash", document_id=document_id)
+
+    def purge(self, document_id: int) -> bool:
+        with self.lock:
+            with self.tx():
+                row = self.row("SELECT deleted FROM document WHERE id = ?", (document_id,))
+                if not row:
+                    raise KeyError(document_id)
+                if not row["deleted"]:
+                    raise ValueError("Dokument muss zuerst in den Papierkorb")
+                if self.scalar(
+                    "SELECT count(*) FROM job WHERE document_id = ? AND state = 'laeuft'",
+                    (document_id,),
+                ):
+                    raise ValueError("Erkennung läuft noch")
+
+                self._audit("document.purged", document_id=document_id)
+                self.execute(
+                    "INSERT INTO purged_document (id, purged_at) VALUES (?,?)",
+                    (document_id, _now()),
+                )
+                self.execute(
+                    "DELETE FROM reminder WHERE deadline_id IN"
+                    " (SELECT id FROM deadline WHERE document_id = ?)",
+                    (document_id,),
+                )
+                self.execute(
+                    "UPDATE deadline SET parent_id = NULL WHERE parent_id IN"
+                    " (SELECT id FROM deadline WHERE document_id = ?)",
+                    (document_id,),
+                )
+                self.execute("DELETE FROM deadline WHERE document_id = ?", (document_id,))
+                self.execute(
+                    "DELETE FROM document_link WHERE from_id = ? OR to_id = ?",
+                    (document_id, document_id),
+                )
+                for table in (
+                    "ocr_fts",
+                    "thumbnail",
+                    "document_tag",
+                    "extraction",
+                    "reference_number",
+                    "field_history",
+                    "ocr_text",
+                    "job",
+                    "import_file",
+                    "blob_store",
+                ):
+                    self.execute(f"DELETE FROM {table} WHERE document_id = ?", (document_id,))
+                self.execute("DELETE FROM document WHERE id = ?", (document_id,))
+            checkpoint = self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            return not checkpoint or checkpoint[0] == 0
 
     def _set_archived(self, document_id: int, flag: int, reason: str | None, event: str) -> None:
         with self.tx():
@@ -572,7 +688,9 @@ class Vault:
                 (text, document_id, page),
             )
 
-    def search(self, query: str, *, include_archived: bool = False) -> list[int]:
+    def search(
+        self, query: str, *, include_archived: bool = False, include_deleted: bool = False
+    ) -> list[int]:
         """Volltextsuche. Der Suchtext wird als Folge von Woertern behandelt (kein FTS-Syntax)."""
         terms = re.findall(r"\w+", query)
         if not terms:
@@ -584,6 +702,8 @@ class Vault:
         )
         if not include_archived:
             sql += " AND d.archived = 0"
+        if not include_deleted:
+            sql += " AND d.deleted = 0"
         with self.lock:
             return [
                 r[0]
