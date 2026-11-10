@@ -24,7 +24,7 @@ const STEPS: Step[] = [
   },
   {
     title: "Hier fängt alles an: Fotos sortieren",
-    text: "Fotografiere ein Papier mit dem Handy und sende es per LocalSend an diesen Computer. Oder ziehe Fotos und PDFs einfach in das große Feld auf dieser Seite.",
+    text: "Fotografiere ein Dokument mit dem Handy und sende es per LocalSend an diesen Computer. Oder ziehe Fotos und PDFs einfach in das große Feld auf dieser Seite.",
     tip: "Mehrere Fotos, die zusammengehören (etwa Seiten eines Briefs), fasst du hier zu einem Dokument zusammen.",
     view: "import",
     target: "nav-import",
