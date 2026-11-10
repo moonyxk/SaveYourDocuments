@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - version.txt
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Version übernehmen und Tag vorbereiten
+        id: version
+        shell: pwsh
+        run: |
+          python scripts/sync-version.py
+          if ($LASTEXITCODE -ne 0) { throw "Die Version aus version.txt konnte nicht übernommen werden." }
+
+          python scripts/sync-version.py --check
+          if ($LASTEXITCODE -ne 0) { throw "Die Versionsdateien stimmen nach der Synchronisierung nicht überein." }
+
+          $version = (Get-Content version.txt -Raw).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+            throw "Ungültige Version in version.txt: $version"
+          }
+
+          $tag = "v$version"
+          $existingTag = git ls-remote --tags origin "refs/tags/$tag"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Der Tag $tag konnte nicht geprüft werden."
+          }
+          if ($existingTag) {
+            throw "Der Tag $tag existiert bereits. Bitte version.txt auf eine neue Version setzen."
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "prerelease=$($version.Contains('-').ToString().ToLower())" >> $env:GITHUB_OUTPUT
+      - name: Windows-Installer bauen
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+      - name: GitHub Release erstellen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $installer = "src-tauri/target/release/bundle/nsis/Save Your Documents_${{ steps.version.outputs.version }}_x64-setup.exe"
+          if (-not (Test-Path -LiteralPath $installer)) {
+            throw "Der erwartete Installer wurde nicht erstellt: $installer"
+          }
+
+          $arguments = @(
+            "release", "create", "${{ steps.version.outputs.tag }}", $installer,
+            "--target", "${{ github.sha }}",
+            "--title", "Save Your Documents ${{ steps.version.outputs.version }}",
+            "--generate-notes"
+          )
+          if ("${{ steps.version.outputs.prerelease }}" -eq "true") {
+            $arguments += "--prerelease"
+          }
+          gh @arguments
+          if ($LASTEXITCODE -ne 0) { throw "Das GitHub Release konnte nicht erstellt werden." }
