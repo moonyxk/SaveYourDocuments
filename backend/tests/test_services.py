@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 from datetime import date
 from pathlib import Path
 
@@ -769,6 +770,29 @@ def test_job_queue_runs_and_recovers(repo):
     q2.enqueue(doc)
     q2.run_pending()
     assert q2.counts()["fehler"] == 1
+
+
+def test_job_queue_stop_reports_when_worker_is_still_running(repo):
+    doc = make_doc(repo)
+    started = threading.Event()
+    release = threading.Event()
+
+    def handler(_document_id):
+        started.set()
+        release.wait()
+        return {"error": None}
+
+    q = JobQueue(repo.v, handler)
+    q.enqueue(doc)
+    q.start()
+    try:
+        assert started.wait(timeout=2)
+        assert not q.stop(timeout=0.01)
+    finally:
+        release.set()
+        stopped = q.stop(timeout=2)
+    assert stopped
+    assert q.counts()["fertig"] == 1
 
 
 def test_job_counts_ignore_failures_superseded_by_retry(repo):

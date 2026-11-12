@@ -1,3 +1,5 @@
+use std::fmt::Display;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,6 +13,34 @@ mod backend;
 use backend::Backend;
 
 const MAIN: &str = "main";
+
+fn enable_autostart_once<E: Display>(
+    dir: &Path,
+    enable: impl FnOnce() -> Result<(), E>,
+) -> Result<(), String> {
+    let marker = dir.join("autostart-eingerichtet");
+    if marker.exists() {
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(dir).map_err(|e| format!("App-Datenordner nicht verfügbar: {e}"))?;
+    enable().map_err(|e| format!("Autostart konnte nicht aktiviert werden: {e}"))?;
+    std::fs::write(marker, b"1").map_err(|e| format!("Autostart-Status nicht speicherbar: {e}"))?;
+    Ok(())
+}
+
+fn report_autostart_error(app: &AppHandle, title: &str, message: &str) {
+    eprintln!("{message}");
+    if let Err(e) = app
+        .notification()
+        .builder()
+        .title(title)
+        .body(message)
+        .show()
+    {
+        eprintln!("Autostart-Fehler konnte nicht angezeigt werden: {e}");
+    }
+}
 
 /// Zeigt das Fenster oder legt es an. Das Fenster lädt die Oberfläche direkt vom lokalen Backend.
 fn show_main(app: &AppHandle, backend: &Backend) {
@@ -65,7 +95,17 @@ fn spawn_reminder_loop(app: AppHandle, backend: Arc<Backend>) {
 
 fn setup_tray(app: &AppHandle, backend: Arc<Backend>) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Save Your Documents öffnen", true, None::<&str>)?;
-    let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
+    let autostart_on = match app.autolaunch().is_enabled() {
+        Ok(enabled) => enabled,
+        Err(e) => {
+            report_autostart_error(
+                app,
+                "Autostart-Status nicht verfügbar",
+                &format!("Die Autostart-Einstellung konnte nicht gelesen werden: {e}"),
+            );
+            false
+        }
+    };
     let auto = CheckMenuItem::with_id(app, "autostart", "Mit Windows starten", true, autostart_on, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Beenden", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &auto, &PredefinedMenuItem::separator(app)?, &quit])?;
@@ -85,7 +125,35 @@ fn setup_tray(app: &AppHandle, backend: Arc<Backend>) -> tauri::Result<()> {
             "open" => show_main(app, &menu_backend),
             "autostart" => {
                 let launch = app.autolaunch();
-                let _ = if launch.is_enabled().unwrap_or(false) { launch.disable() } else { launch.enable() };
+                match launch.is_enabled() {
+                    Ok(true) => {
+                        if let Err(e) = launch.disable() {
+                            report_autostart_error(
+                                app,
+                                "Autostart nicht geändert",
+                                &format!(
+                                    "Die Autostart-Einstellung konnte nicht geändert werden: {e}"
+                                ),
+                            );
+                        }
+                    }
+                    Ok(false) => {
+                        if let Err(e) = launch.enable() {
+                            report_autostart_error(
+                                app,
+                                "Autostart nicht geändert",
+                                &format!(
+                                    "Die Autostart-Einstellung konnte nicht geändert werden: {e}"
+                                ),
+                            );
+                        }
+                    }
+                    Err(e) => report_autostart_error(
+                        app,
+                        "Autostart-Status nicht verfügbar",
+                        &format!("Die Autostart-Einstellung konnte nicht gelesen werden: {e}"),
+                    ),
+                }
             }
             "quit" => {
                 menu_backend.shutdown();
@@ -136,13 +204,21 @@ pub fn run() {
             spawn_reminder_loop(app.handle().clone(), backend.clone());
 
             // Beim allerersten Start Autostart einschalten (Dauerbetrieb ist Teil des Konzepts)
-            if let Ok(dir) = app.path().app_data_dir() {
-                let marker = dir.join("autostart-eingerichtet");
-                if !marker.exists() {
-                    let _ = std::fs::create_dir_all(&dir);
-                    let _ = app.autolaunch().enable();
-                    let _ = std::fs::write(marker, b"1");
+            match app.path().app_data_dir() {
+                Ok(dir) => {
+                    if let Err(e) = enable_autostart_once(&dir, || app.autolaunch().enable()) {
+                        report_autostart_error(
+                            app.handle(),
+                            "Autostart nicht eingerichtet",
+                            &format!("{e}. Beim nächsten Programmstart wird es erneut versucht."),
+                        );
+                    }
                 }
+                Err(e) => report_autostart_error(
+                    app.handle(),
+                    "Autostart nicht eingerichtet",
+                    &format!("Der App-Datenordner konnte nicht ermittelt werden: {e}"),
+                ),
             }
             if !started_minimized {
                 show_main(app.handle(), &backend);
@@ -162,4 +238,37 @@ pub fn run() {
         }
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::enable_autostart_once;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn failed_autostart_enable_is_retried_before_marking_setup_complete() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("syd-autostart-{nonce}"));
+        let marker = dir.join("autostart-eingerichtet");
+        let mut attempts = 0;
+
+        assert!(enable_autostart_once(&dir, || {
+            attempts += 1;
+            Err("Pluginfehler")
+        })
+        .is_err());
+        assert!(!marker.exists());
+
+        enable_autostart_once(&dir, || {
+            attempts += 1;
+            Ok::<(), &str>(())
+        })
+        .unwrap();
+        assert_eq!(attempts, 2);
+        assert!(marker.is_file());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

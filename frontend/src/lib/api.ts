@@ -90,16 +90,17 @@ async function request<T>(method: string, path: string, body?: unknown, params?:
   return data as T;
 }
 
+/** @deprecated Prefer endpoint-specific response types. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Json = any;
 
 export const api = {
-  get: <T = Json>(path: string, params?: Params) => request<T>("GET", path, undefined, params),
-  post: <T = Json>(path: string, body?: unknown) => request<T>("POST", path, body ?? {}),
-  put: <T = Json>(path: string, body?: unknown) => request<T>("PUT", path, body ?? {}),
-  patch: <T = Json>(path: string, body?: unknown) => request<T>("PATCH", path, body ?? {}),
-  del: <T = Json>(path: string) => request<T>("DELETE", path),
-  upload: <T = Json>(path: string, form: FormData) => request<T>("POST", path, form),
+  get: <T = unknown>(path: string, params?: Params) => request<T>("GET", path, undefined, params),
+  post: <T = unknown>(path: string, body?: unknown) => request<T>("POST", path, body ?? {}),
+  put: <T = unknown>(path: string, body?: unknown) => request<T>("PUT", path, body ?? {}),
+  patch: <T = unknown>(path: string, body?: unknown) => request<T>("PATCH", path, body ?? {}),
+  del: <T = unknown>(path: string) => request<T>("DELETE", path),
+  upload: <T = unknown>(path: string, form: FormData) => request<T>("POST", path, form),
 };
 
 /** Fehlertext fuer Anwender; technische Details werden nie angezeigt. */

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, errorText, type Json } from "./lib/api";
+import { api, errorText } from "./lib/api";
 import { useEvent, useLiveEvents } from "./lib/events";
 import { useApplyDisplaySettings } from "./lib/display";
 import { NavContext, type NavParams, type View } from "./lib/nav";
@@ -29,6 +29,25 @@ const NAV: { id: View; label: string; icon: string; sep?: boolean }[] = [
   { id: "settings", label: "Einstellungen", icon: "settings", sep: true },
 ];
 
+type SettingsResponse = { tutorial_done?: boolean };
+type DashboardResponse = {
+  waiting_files?: number;
+  to_review?: number;
+  upcoming?: { done?: boolean }[];
+};
+type IncomingResponse = {
+  items?: unknown[];
+  status?: { running?: boolean; enabled?: boolean; alias?: string };
+};
+type StatusResponse = {
+  state: "setup" | "locked" | "ready";
+  reason: string | null;
+  mode: string | null;
+  setup_pending: boolean;
+  pending_vault_path: string | null;
+  version: string;
+};
+
 function Shell({ mode }: { mode: string | null }) {
   useApplyDisplaySettings();
   const qc = useQueryClient();
@@ -47,16 +66,19 @@ function Shell({ mode }: { mode: string | null }) {
   }, []);
   const nav = useMemo(() => ({ view, params, go }), [view, params, go]);
 
-  const settings = useQuery({ queryKey: ["settings"], queryFn: () => api.get<Json>("/api/settings") });
+  const settings = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => api.get<SettingsResponse>("/api/settings"),
+  });
   const autoTour = settings.data?.tutorial_done === false && !tourDismissed.current;
   const closeTour = useCallback(() => {
     tourDismissed.current = true;
     go("start");
     api
-      .put<Json>("/api/settings", { tutorial_done: true })
+      .put<SettingsResponse>("/api/settings", { tutorial_done: true })
       .then((d) => qc.setQueryData(["settings"], d))
-      .catch(() => {});
-  }, [go, qc]);
+      .catch((e) => toast(errorText(e), "bad"));
+  }, [go, qc, toast]);
   const closeHelpTour = useCallback(() => {
     setHelpTour(null);
     go("help");
@@ -69,8 +91,14 @@ function Shell({ mode }: { mode: string | null }) {
     if (e.type === "locked") void qc.invalidateQueries({ queryKey: ["status"] });
   });
 
-  const dash = useQuery({ queryKey: ["dashboard"], queryFn: () => api.get<Json>("/api/dashboard") });
-  const incoming = useQuery({ queryKey: ["incoming"], queryFn: () => api.get<Json>("/api/incoming") });
+  const dash = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: () => api.get<DashboardResponse>("/api/dashboard"),
+  });
+  const incoming = useQuery({
+    queryKey: ["incoming"],
+    queryFn: () => api.get<IncomingResponse>("/api/incoming"),
+  });
   const lock = useMutation({
     mutationFn: () => api.post("/api/lock"),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["status"] }),
@@ -80,7 +108,7 @@ function Shell({ mode }: { mode: string | null }) {
   const counts: Partial<Record<View, number>> = {
     import: (dash.data?.waiting_files ?? 0) + (incoming.data?.items?.length ?? 0),
     review: dash.data?.to_review ?? 0,
-    fristen: dash.data?.upcoming?.filter((d: Json) => !d.done).length ?? 0,
+    fristen: dash.data?.upcoming?.filter((d) => !d.done).length ?? 0,
   };
   const ls = incoming.data?.status;
   const dotClass = !live ? "bad" : ls?.running ? "" : "warn";
@@ -173,7 +201,7 @@ function Shell({ mode }: { mode: string | null }) {
 export default function App() {
   const status = useQuery({
     queryKey: ["status"],
-    queryFn: () => api.get<Json>("/api/status"),
+    queryFn: () => api.get<StatusResponse>("/api/status"),
     refetchInterval: (q) => (q.state.data?.state === "ready" ? false : 4000),
     retry: 1,
   });
@@ -201,7 +229,7 @@ export default function App() {
       </main>
     );
   }
-  const s = status.data as Json;
+  const s = status.data;
   if (s.state === "setup") return <Setup status={s} />;
   if (s.state === "locked") return <Unlock status={s} />;
   return <Shell mode={s.mode} />;

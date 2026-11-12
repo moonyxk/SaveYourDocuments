@@ -180,7 +180,8 @@ class AppState:
         if self.state == "ready":
             with contextlib.suppress(Exception):
                 await self.ls.stop()
-            await asyncio.to_thread(self.jobs.stop)
+            while not await asyncio.to_thread(self.jobs.stop):
+                log.warning("waiting_for_job_shutdown")
         if self.vault:
             with contextlib.suppress(Exception):
                 self.vault.close()

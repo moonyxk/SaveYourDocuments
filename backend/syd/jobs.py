@@ -64,11 +64,17 @@ class JobQueue:
         self._thread.start()
         self._wake.set()
 
-    def stop(self, timeout: float = 10.0) -> None:
+    def stop(self, timeout: float = 10.0) -> bool:
         self._stop.set()
         self._wake.set()
-        if self._thread:
-            self._thread.join(timeout)
+        thread = self._thread
+        if thread is None:
+            return True
+        thread.join(timeout)
+        if thread.is_alive():
+            return False
+        self._thread = None
+        return True
 
     def notify(self) -> None:
         self._wake.set()
