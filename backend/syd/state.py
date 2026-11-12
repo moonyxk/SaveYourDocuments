@@ -293,8 +293,15 @@ class AppState:
                 )
             if mode not in ("key", "password"):
                 raise _bad("Bitte „Schlüssel“ oder „Passwort“ wählen.")
-            if mode == "password" and (not password or len(password) < MIN_PASSWORD):
-                raise _bad(f"Das Passwort braucht mindestens {MIN_PASSWORD} Zeichen.")
+            if mode == "password":
+                if password is None or len(password) < MIN_PASSWORD:
+                    raise _bad(f"Das Passwort braucht mindestens {MIN_PASSWORD} Zeichen.")
+                secret: bytes | str = password
+                recovery_key: str | None = None
+            else:
+                key = generate_key()
+                secret = key
+                recovery_key = format_recovery_key(key)
             path = self.paths.vault(self.cfg)
             if vault_dir:
                 folder = Path(vault_dir)
@@ -303,7 +310,6 @@ class AppState:
                 path = folder / "archiv.syd"
             self._discard_pending()
             self._move_aside(path)
-            secret: bytes | str = generate_key() if mode == "key" else password
             try:
                 vault = await asyncio.to_thread(Vault.open, path, secret, create=True)
             except (OSError, VaultError) as exc:
@@ -312,8 +318,8 @@ class AppState:
                 ) from exc
             self._pending = {"mode": mode, "secret": secret, "vault": vault, "path": str(path)}
             result: dict = {"mode": mode, "vault_path": str(path)}
-            if mode == "key":
-                result["recovery_key"] = format_recovery_key(secret)
+            if recovery_key is not None:
+                result["recovery_key"] = recovery_key
             return result
 
     async def setup_confirm(self, secret: str) -> dict:
@@ -335,9 +341,11 @@ class AppState:
             self.cfg.vault_path = p["path"]
             self.cfg.save(self.paths.root)
             self.vault = p["vault"]
+            vault = self.vault
+            assert vault is not None
             self._pending = None
             await self._activate()
-            self.vault.audit("setup.completed")
+            vault.audit("setup.completed")
             return {"state": self.state}
 
     async def setup_open_existing(self, path: str, secret: str) -> dict:
@@ -442,13 +450,15 @@ class AppState:
     async def change_password(self, current: str, new: str) -> None:
         async with self._lock:
             self._require_secret(current)
+            vault = self.vault
+            assert vault is not None
             if len(new or "") < MIN_PASSWORD:
                 raise _bad(f"Das Passwort braucht mindestens {MIN_PASSWORD} Zeichen.")
-            await asyncio.to_thread(self.vault.rekey, new)
+            await asyncio.to_thread(vault.rekey, new)
             keystore.delete_key(self.paths.key_file)
             self.cfg.mode = "password"
             self.cfg.save(self.paths.root)
-            self.vault.audit("security.password_changed")
+            vault.audit("security.password_changed")
 
     async def prepare_new_key(self, current: str) -> dict:
         async with self._lock:
@@ -465,12 +475,14 @@ class AppState:
                     "Das stimmt nicht mit dem angezeigten Schlüssel überein.", "rueckeingabe_falsch"
                 )
             key = self._pending_key
-            await asyncio.to_thread(self.vault.rekey, key)
+            vault = self.vault
+            assert vault is not None
+            await asyncio.to_thread(vault.rekey, key)
             keystore.store_key(self.paths.key_file, key)
             self._pending_key = None
             self.cfg.mode = "key"
             self.cfg.save(self.paths.root)
-            self.vault.audit("security.key_changed")
+            vault.audit("security.key_changed")
 
     # --- Status --------------------------------------------------------------------
 

@@ -253,6 +253,7 @@ def test_job_queue_skips_a_job_removed_before_it_starts(repo):
     queue = JobQueue(repo.v, lambda document_id: calls.append(document_id) or {})
     job_id = queue.enqueue(doc)
     pending = queue._next()
+    assert pending is not None
     repo.v.execute("DELETE FROM job WHERE id = ?", (job_id,))
 
     queue._process(pending)
