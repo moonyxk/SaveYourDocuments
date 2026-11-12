@@ -26,6 +26,8 @@ Planung und Entscheidungen: [PLAN.md](PLAN.md), Designsystem: [DESIGN.md](DESIGN
 
 ## Entwickeln
 
+Du möchtest den Code verstehen und selbst daran arbeiten? Die [Einsteiger-Doku zum Projektaufbau](docs/CODE_VERSTEHEN.md) erklärt Frontend, Backend und Tauri mit Codebeispielen und kleinen Übungen.
+
 Alles dazu: [docs/ENTWICKLUNG.md](docs/ENTWICKLUNG.md). Kurzfassung:
 
 ```bash
